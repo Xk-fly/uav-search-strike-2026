@@ -1,0 +1,44 @@
+# ROS / Catkin generated
+build/
+devel/
+install/
+log/
+logs/
+.catkin_tools/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# ROS runtime
+*.bag
+*.bag.active
+*.log
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large model files
+*.pt
+*.pth
+*.onnx
+*.engine
+*.safetensors
+
+# Xterm runtime/debug files
+Xterm.log*
+Xterm.*.svg
+
+# Xterm runtime/debug files
+Xterm.log*
+Xterm.*.svg
+
+# Lowercase xterm runtime files
+xterm.log*
+xterm.*.svg
