@@ -1,18 +1,35 @@
 # 仓库指南（AGENTS.md）
 
+> 项目：2026“启元杯”无人系统具身智能算法挑战赛——无人机搜索打击应用场景  
+> 本文件规定 ChatGPT/Codex/其他 Agent 在本仓库中的工作方式。项目事实、当前进度和环境参数不要只依赖聊天记忆，优先读取仓库知识库。
+
+## 0. 开始任务前的必读顺序
+
+开始任何重要任务前，按以下顺序恢复项目上下文：
+
+1. `docs/README.md` —— 知识库入口、文档职责与事实优先级；
+2. `docs/PROJECT_OVERVIEW.md` —— 项目目标、系统架构与总体工作流；
+3. `docs/PROJECT_STATUS.md` —— 当前做到哪里、已经完成什么、下一步是什么；
+4. `docs/PROJECT_FACTS.md` —— 已确认事实、路径、版本、关键 topic/文件；
+5. `docs/ENVIRONMENT.md` —— GPUFree/ROS/PX4/RflySim/Python/模型等运行环境；
+6. 与当前任务相关时再读 `docs/DEBUG_LOG.md` 和 `docs/TODO.md`。
+
+如果聊天内容与上述文档冲突，优先按 `docs/README.md` 定义的事实优先级处理，并指出冲突，不要静默猜测。
+
 ## 1. 项目定位
 
-本仓库用于 **2026“启元杯”无人系统具身智能算法挑战赛——无人机搜索打击应用场景** 的代码开发与调试。
+本仓库用于 **2026“启元杯”无人系统具身智能算法挑战赛——无人机搜索打击应用场景** 的代码开发、复现、调试与后续优化。
 
-本仓库并不包含完整比赛运行环境。完整仿真环境仍部署在 GPUFree Ubuntu 云服务器中，包括 ROS 1 Noetic、MAVROS、PX4 / RflySim、QGroundControl、九格大模型及其权重、图形显示与 Xterm 环境等。
+本仓库并不包含完整比赛运行环境。完整仿真环境部署在 GPUFree Ubuntu 云服务器中，包括 ROS 1 Noetic、MAVROS、PX4/RflySim、QGroundControl、九格大模型及其权重、图形显示/Xterm 等。
 
-因此，本地 Codex 的主要职责是：
+本地 Codex 的主要职责：
 
 1. 阅读并理解仓库代码结构；
 2. 分析 ROS 节点、topic、launch、配置和模块依赖；
 3. 修改代码、配置、行为树、感知或规划逻辑；
 4. 为每次修改给出明确的云服务器验证步骤；
-5. 根据用户反馈的日志、ROS topic、截图和仿真现象继续定位问题。
+5. 根据用户反馈的日志、ROS topic、截图和仿真现象继续定位问题；
+6. 当产生新的永久事实、阶段性结论或调试结果时，提醒或更新对应知识库文档。
 
 **不要假设本地 Windows 环境可以直接完整运行比赛仿真。**
 
@@ -20,13 +37,9 @@
 
 - `main`：稳定版本，不直接进行日常实验性修改；
 - `dev`：主要开发分支，Codex 日常修改默认在此分支进行；
-- `official-demo-baseline`：官方 Demo 基线标签，作为永久回退点。
+- `official-demo-baseline`：官方 Demo 基线标签，永久回退点。
 
-未经用户明确要求：
-
-- 不要改写或删除 `official-demo-baseline`；
-- 不要强制重写 `main` 历史；
-- 不要执行 `git push --force`、危险的 `git reset --hard` 或删除稳定分支/标签。
+未经用户明确要求，不要改写或删除 `official-demo-baseline`，不要强制重写 `main` 历史，不要执行 `git push --force`，不要对未知提交执行破坏性的 `git reset --hard`，不要删除稳定分支或标签。
 
 较大实验优先创建独立分支，例如：
 
@@ -43,26 +56,9 @@ git switch -c feature/balloon-tracking
 - `sensor_pkg/`：传感器处理、点云转换、视觉伺服等脚本；
 - `common_msgs/`：共享 ROS 消息定义。
 
-其他重要目录：
+其他重要目录包括 `ego-planner/`、`cv_bridge/`、`behaviortree_cpp/`、`object_det/third_party/`。不要对第三方依赖目录进行无关的大范围格式化或重构。
 
-- `ego-planner/`：路径规划模块；
-- `cv_bridge/`：ROS 图像桥接依赖；
-- `behaviortree_cpp/`：行为树依赖；
-- `object_det/third_party/`：目标检测相关第三方依赖。
-
-任务 XML 和检测器 YAML 应放在对应包的 `config/` 中；ROS 入口通常放在 `launch/` 或 `scripts/` 中。
-
-不要对第三方依赖目录进行无关的大范围格式化或重构。
-
-以下内容不应提交：
-
-- `build/`
-- `devel/`
-- `install/`
-- 日志
-- rosbag
-- 模型权重
-- Xterm 运行产物
+以下内容不应提交：`build/`、`devel/`、`install/`、日志、rosbag、模型权重、Xterm 运行产物。
 
 ## 4. 构建、测试与开发命令
 
@@ -71,8 +67,11 @@ git switch -c feature/balloon-tracking
 ```bash
 ./build.sh
 source devel/setup.bash
-roslaunch mission_pkg basic_test.launch
-roslaunch object_det detection.launch
+```
+
+按模块使用对应 `roslaunch`；完整仿真入口为：
+
+```bash
 ./sim_env_start.sh
 ```
 
@@ -84,267 +83,74 @@ catkin_make run_tests
 catkin_test_results build
 ```
 
+**注意：不要把 `basic_test.launch` 当成无副作用的“启动检查”。其行为树会执行起飞/移动/目标定位等任务，必须在 PX4/RflySim/MAVROS 等前置条件满足后再运行。**
+
 ## 5. 本地 Codex 与云服务器职责边界
 
-### 本地 Codex 可以完成
+本地 Codex 可以阅读源码、分析调用关系、修改 Python/C++/XML/YAML/launch、增加日志、设计实验、生成验证命令。
 
-- 阅读仓库源码；
-- 搜索函数、类、topic、参数、launch 文件；
-- 分析 ROS 节点调用关系；
-- 修改 Python / C++ / XML / YAML / launch / 配置文件；
-- 增加调试日志；
-- 设计实验方案；
-- 给出构建、运行和验证命令；
-- 根据用户反馈继续修改。
-
-### 本地 Codex 不能直接知道
-
-除非用户提供结果，否则不要假设知道：
-
-- 云服务器当前有哪些 ROS 节点正在运行；
-- `/mavros/state` 当前值；
-- PX4 当前是否进入 OFFBOARD；
-- RflySim 当前场景状态；
-- GPU 当前资源占用；
-- 模型是否成功加载；
-- 某个 ROS topic 当前实际输出；
-- 无人机实际飞行表现。
-
-这些必须由用户在 GPUFree 云服务器执行命令后反馈。
+除非用户提供实际结果，否则不要假设知道云服务器当前 ROS 节点、`/mavros/state`、PX4 OFFBOARD、RflySim 状态、GPU 分配、模型加载、topic 实际输出或无人机真实飞行表现。
 
 ## 6. 每次修改后的强制验证要求
 
-凡是涉及 ROS 节点、行为树、任务逻辑、目标检测、二维码检测、Ego-Planner、MAVROS、视觉伺服、传感器、launch 文件、关键参数或飞行行为的修改，Codex 不应只给出代码修改。
+凡涉及 ROS 节点、行为树、任务逻辑、检测、Ego-Planner、MAVROS、视觉伺服、传感器、launch、关键参数或飞行行为，必须同时给出：
 
-必须同时给出：
+1. 修改文件；
+2. 是否重新编译；
+3. 云服务器执行命令；
+4. 启动哪个 launch/脚本；
+5. 检查哪些 topic/节点/日志；
+6. 正常预期；
+7. 异常时用户应反馈什么。
 
-1. 修改了哪些文件；
-2. 是否需要重新编译；
-3. 云服务器执行的命令；
-4. 启动哪个 launch 或脚本；
-5. 需要检查哪些 ROS topic / 节点 / 日志；
-6. 正常情况下预期看到什么；
-7. 异常情况下用户应反馈哪些信息。
-
-推荐流程：
+推荐闭环：
 
 ```text
-修改内容
-↓
-服务器 git pull
-↓
-重新编译
-↓
-source devel/setup.bash
-↓
-启动对应节点/完整仿真
-↓
-检查 topic / 日志 / 窗口
-↓
-记录实际现象
-↓
-反馈给 Codex
+本地修改
+→ commit + push
+→ 云服务器 git pull
+→ 必要时重新编译
+→ source devel/setup.bash
+→ 启动对应模块/完整仿真
+→ 检查 topic / 日志 / 窗口
+→ 记录实际现象
+→ 更新知识库（如适用）
+→ 继续分析
 ```
 
-## 7. 推荐的云服务器验证流程
+## 7. 调试与修改原则
 
-通常在 GPUFree 云服务器上：
-
-```bash
-cd ~/catkin_ws
-git status
-git pull
-```
-
-如修改涉及需要重新编译的 ROS 包：
-
-```bash
-./build.sh
-source devel/setup.bash
-```
-
-再根据模块启动：
-
-```bash
-roslaunch <package> <file>.launch
-```
-
-或启动完整仿真：
-
-```bash
-./sim_env_start.sh
-```
-
-需要时检查：
-
-```bash
-rosnode list
-rostopic list
-rostopic echo <topic_name>
-rostopic hz <topic_name>
-rosservice list
-```
-
-Codex 应根据具体修改内容给出更精确的命令，而不是机械重复全部命令。
-
-## 8. 调试问题的分析方式
-
-优先按照以下链路定位：
+优先按：
 
 ```text
-实际现象
-↓
-对应功能模块
-↓
-ROS topic / service / action
-↓
-对应 ROS 节点
-↓
-对应 package
-↓
-对应 launch / config
-↓
-对应源码
-↓
-最小修改
-↓
-重新验证
+实际现象 → 功能模块 → topic/service → ROS 节点 → package → launch/config → 源码 → 最小修改 → 重新验证
 ```
 
-例如“气球检测框正常，但无人机不追踪”时，不要直接修改检测网络，应优先检查检测结果 topic、行为树接收、视觉伺服节点、速度/yaw 指令、MAVROS setpoint 和飞控模式。
+原则：最小改动、一次解决一个问题、不随意改 topic/消息类型/坐标系/第三方版本、不随意删除官方逻辑。信息不足时不要猜测、不要虚构参数或节点状态。
 
-## 9. 修改原则
+## 8. Commit 规范
 
-- 最小改动；
-- 一次只解决一个明确问题；
-- 不进行无关重构；
-- 不随意改变 ROS topic 名称；
-- 不随意改变消息类型；
-- 不随意修改坐标系约定；
-- 不随意更换第三方依赖版本；
-- 不随意删除官方逻辑；
-- 较大改造先解释原因和影响范围。
-
-如果问题可能来自环境而不是源码，应明确指出，不要为了“看起来有修改”而强行改代码。
-
-## 10. 编码风格与命名约定
-
-### Python
-
-- 四空格缩进；
-- 模块 / 函数使用 `snake_case`；
-- 类使用 `PascalCase`；
-- ROS 可执行脚本放在 `scripts/`；
-- 可导入逻辑放在 `src/<package>/`。
-
-### C++
-
-- 两空格缩进；
-- 大括号单独成行；
-- 文件 / 函数使用 `snake_case`；
-- 类型使用 `PascalCase`。
-
-### launch / config
-
-使用含义明确的小写蛇形命名，例如 `hit_balloon.launch`。仓库目前没有统一格式化工具，因此应保持 diff 聚焦。
-
-## 11. 测试规范
-
-第一方代码目前没有强制覆盖率要求。引入可复用逻辑时，应尽量增加针对性测试。
-
-修改任务逻辑时，应优先运行最接近的测试场景，例如：
-
-```bash
-roslaunch mission_pkg basic_test.launch
-roslaunch mission_pkg cross_frame_test.launch
-```
-
-涉及飞行行为的修改，应记录 ROS topic、节点状态、终端日志、仿真截图、必要时 rosbag 和无人机实际行为。
-
-默认测试流程不应要求真实飞行硬件。
-
-## 12. Commit 与 Pull Request 规范
-
-当前官方基线提交为：
-
-```text
-baseline: official competition demo
-```
-
-后续提交标题示例：
+提交标题示例：
 
 ```text
 mission: tune visual servo limits
 object_det: adjust balloon confidence threshold
 sensor: fix cloud transform frame
 planner: tune obstacle clearance
-docs: update simulation workflow
+docs: update project status
 ```
 
-不要提交生成文件、编译产物、大型模型权重、无意义日志和临时调试文件。
+## 9. 多对话 / 多 Agent 协作
 
-重要提交应说明修改场景、修改的 package / 文件、修改原因、运行命令、验证结果以及对飞行安全或任务逻辑的影响。
-
-## 13. 多对话 / 多 Agent 协作规则
-
-同一 Codex Project 下可能存在多个独立对话。不要假设新对话自动知道其他对话中的所有内容。
-
-长期有效的信息应写入仓库文档，而不是只存在于聊天中。
-
-建议长期维护：
+不要假设新对话自动知道其他对话内容。跨对话信息必须沉淀到仓库文档。
 
 ```text
-AGENTS.md
-docs/PROJECT_CONTEXT.md
-docs/ENVIRONMENT.md
-docs/DEBUG_LOG.md
-docs/TODO.md
+项目目标/架构变化          → PROJECT_OVERVIEW.md
+阶段完成/当前状态变化      → PROJECT_STATUS.md
+确认新版本/路径/参数       → PROJECT_FACTS.md 或 ENVIRONMENT.md
+一次真实调试/故障处理      → DEBUG_LOG.md
+任务完成/新增任务          → TODO.md
+Agent 工作规则变化         → AGENTS.md
 ```
 
-其中：
-
-- `AGENTS.md`：所有 Agent 都应遵循的总规则；
-- `PROJECT_CONTEXT.md`：比赛架构、模块关系与长期背景；
-- `ENVIRONMENT.md`：GPUFree、ROS、PX4、RflySim、模型路径等环境信息；
-- `DEBUG_LOG.md`：重要问题、修改、测试现象与结果；
-- `TODO.md`：当前任务、优先级和待验证事项。
-
-## 14. 信息不足时的处理原则
-
-如果当前仓库没有足够信息支持某个结论：
-
-- 不要猜测；
-- 不要虚构 ROS topic；
-- 不要虚构 launch 文件；
-- 不要虚构参数；
-- 不要假设某个节点已经启动。
-
-应明确告诉用户还需要什么，并给出对应检查命令，例如：
-
-```bash
-rostopic list
-```
-
-或要求用户提供相关 launch 文件、日志或 topic 输出。
-
-## 15. 当前核心开发闭环
-
-```text
-Windows 本地 Codex
-        ↓
-读取 / 修改 dev 分支代码
-        ↓
-commit + push
-        ↓
-GitHub Private
-        ↓
-GPUFree 云服务器 git pull
-        ↓
-ROS / PX4 / RflySim 仿真验证
-        ↓
-用户反馈日志 / topic / 截图 / 飞行现象
-        ↓
-Codex 继续分析和修改
-```
-
-所有较大改动都应围绕这一闭环进行。
+GitHub Private 仓库中的知识库是长期事实来源；聊天记忆只是辅助。
