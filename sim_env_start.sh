@@ -65,7 +65,7 @@ if [ -f "${WS_DIR}/devel/setup.bash" ]; then
     echo -e "${GREEN}[OK] Sourced devel/setup.bash${NC}"
 
     # --- RflySim SDK PYTHONPATH ---
-    RFLYSIM_SDK="/mnt/c/PX4PSP/RflySimAPIs/RflySimSDK"
+    RFLYSIM_SDK="${HOME}/PX4PSP/RflySimAPIs/RflySimSDK"
     if [ -d "${RFLYSIM_SDK}" ]; then
         export PYTHONPATH="${PYTHONPATH}:${RFLYSIM_SDK}:${RFLYSIM_SDK}/comm:${RFLYSIM_SDK}/ctrl:${RFLYSIM_SDK}/ue:${RFLYSIM_SDK}/vision:${RFLYSIM_SDK}/phm:${RFLYSIM_SDK}/swarm:${RFLYSIM_SDK}/adb:${RFLYSIM_SDK}/wsl:${RFLYSIM_SDK}/test:${RFLYSIM_SDK}/word"
         echo -e "${GREEN}[OK] Added RflySim SDK to PYTHONPATH${NC}"
