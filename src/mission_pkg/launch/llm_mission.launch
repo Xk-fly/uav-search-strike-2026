@@ -70,7 +70,9 @@
 
     <!-- 降落 -->
     <param name="land/return_safe_pos" value="0.0;0.0;1.0" type="str"/>
-    <param name="land/brake_hold_ms" value="1800" type="double"/>
+    <param name="land/stable_speed_mps" value="0.16" type="double"/>
+    <param name="land/stable_time_sec" value="0.90" type="double"/>
+    <param name="land/stable_timeout_sec" value="9.0" type="double"/>
     <param name="land/return_pos" value="0.0;0.0;0.5" type="str"/>     <!-- 降落前返回位置 -->
     <param name="land/return_yaw" value="0.0" type="double"/>         <!-- 降落前航向(rad) -->
 

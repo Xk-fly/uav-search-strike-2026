@@ -284,6 +284,8 @@ std::string commandToXmlNode(const std::string& command) {
             "      <PrecisionMove face_goal=\"{planning_end_pos}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n"
             "      <!-- 使用完整记录的XYZ平滑斜向返回 -->\n"
             "      <PrecisionMove goal=\"{planning_end_pos}\"/>\n"
+            "      <!-- 新增：穿框前回到框心航向，让前视深度与框口同向 -->\n"
+            "      <PrecisionMove face_goal=\"{frame_center}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n"
             "      <!-- Ego一次反穿框并沿穿框方向继续1m；不拆分两次0.5m -->\n"
             "      <PlanningControl goal=\"{frame_center}\" through_from=\"{planning_end_pos}\" through_distance=\"" + std::to_string(exit_distance) + "\"/>\n"
             "      <!-- 完全离框后，原地朝向已保存的框中心 -->\n"
@@ -360,10 +362,13 @@ std::string commandToXmlNode(const std::string& command) {
         std::string ret_pos = getStr("land/return_pos", "0.0;0.0;0.5");
         double ret_yaw = getDbl("land/return_yaw", 0.0);
         std::string safe = getStr("land/return_safe_pos", "0.0;0.0;1.0");
-        std::string hold_ms = std::to_string((int)getDbl("land/brake_hold_ms", 1800));
+        // 用实测位置差分做稳定速度门控，替换无反馈的固定延时。
+        std::string hold_speed = std::to_string(getDbl("land/stable_speed_mps", 0.16));
+        std::string hold_time = std::to_string(getDbl("land/stable_time_sec", 0.9));
+        std::string hold_timeout = std::to_string(getDbl("land/stable_timeout_sec", 9.0));
         return
-            "      <!-- 先保留上一动作的悬停指令，缓冲残余动量 -->\n"
-            "      <Delay delay_msec=\"" + hold_ms + "\"><AlwaysSuccess/></Delay>\n"
+            "      <!-- 打击后先BRAKE到实际速度足够小，再HOLD稳定，之后才进入Ego返航 -->\n"
+            "      <StableHover speed_threshold=\"" + hold_speed + "\" settle_time=\"" + hold_time + "\" timeout=\"" + hold_timeout + "\"/>\n"
             "      <!-- Ego局部规划返航到起点上方 -->\n"
             "      <Timeout msec=\"90000\"><PlanningControl goal=\"" + safe + "\"/></Timeout>\n"
             "      <!-- 精准移动到降落准备点 -->\n"
