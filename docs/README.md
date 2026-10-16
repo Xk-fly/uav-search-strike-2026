@@ -89,3 +89,5 @@ RflySim SDK 路径问题已修复
 3. [HANDOFF_20261016.md](HANDOFF_20261016.md)：从零重启、一键脚本、关键参数、交接要求与下一步。
 
 代码基线 `official-demo-baseline` tag 不做覆盖；本次均为 `dev` 文档归档，**没有修改/验证新的飞控或感知算法**。如 ChatGPT 项目空间另有《全对话技术交接》《运行手册》，它们提供更完整的日志与过程细节。
+
+- [CHATGPT_START_PROMPT_20261016.md](CHATGPT_START_PROMPT_20261016.md)：可在新对话直接复制使用的 GitHub 长期备份提示词。
