@@ -10,6 +10,7 @@
 
 #include "base/drone_action_node.h"
 #include <ros/time.h>
+#include <std_msgs/Bool.h>
 
 class VisualServo : public DroneActionNode {
 public:
@@ -35,6 +36,15 @@ private:
     double max_area_ratio_;
     ros::Time sprint_start_time_;
     ros::Time brake_start_time_;
+    bool target_visible_{false};
+    bool strike_was_visible_{false};
+    ros::Publisher visible_pub_, hit_pub_;
+    double min_world_z_{0.90}, max_descent_{0.15}, max_servo_vz_{0.10};
+    double floor_z_{0.90};
+    bool climbing_to_safe_z_{false};
+    ros::Time climb_start_;
+    geometry_msgs::Point climb_goal_;
+    double climb_yaw_{0.0};
     int align_stable_frames_;
     
     // 相机参数

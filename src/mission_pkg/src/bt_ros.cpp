@@ -329,6 +329,9 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_app_center = std::to_string(getDbl("visual_servo/approach_center_limit_px", 48.0));
         std::string vs_sp_center = std::to_string(getDbl("visual_servo/sprint_center_limit_px", 24.0));
         std::string vs_brake = std::to_string(getDbl("visual_servo/brake_time", 0.5));
+        std::string vs_floor = std::to_string(getDbl("visual_servo/min_world_z", 0.90));
+        std::string vs_descent = std::to_string(getDbl("visual_servo/max_descent_from_entry", 0.15));
+        std::string vs_max_vz = std::to_string(getDbl("visual_servo/max_vertical_speed", 0.10));
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
@@ -351,7 +354,9 @@ std::string commandToXmlNode(const std::string& command) {
             "approach_area_threshold=\"" + vs_area_th + "\" "
             "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\" "
             "max_sprint_yaw_rate=\"" + vs_sprint_yaw + "\" approach_center_limit_px=\"" + vs_app_center + "\" "
-            "sprint_center_limit_px=\"" + vs_sp_center + "\" brake_time=\"" + vs_brake + "\"/>\n"
+            "sprint_center_limit_px=\"" + vs_sp_center + "\" brake_time=\"" + vs_brake + "\" "
+            "min_world_z=\"" + vs_floor + "\" max_descent_from_entry=\"" + vs_descent + "\" "
+            "max_vertical_speed=\"" + vs_max_vz + "\"/>\n"
             "          </Parallel>\n"
             "        </Timeout>\n"
             "      </ForceSuccess>\n";

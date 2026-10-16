@@ -11,6 +11,7 @@
  ******************************************************************************/
 #include "nodes/action/visual_servo.h"
 #include <algorithm>
+#include <std_msgs/Bool.h>
 #include <cmath>
 
 
@@ -24,6 +25,8 @@ VisualServo::VisualServo(const std::string& name, const NodeConfig& config)
     nh->param<double>("cy", img_cy_, 240.0);
     nh->param<int>("img_w", img_w_, 640);
     nh->param<int>("img_h", img_h_, 480);
+    visible_pub_=nh->advertise<std_msgs::Bool>("/balloon_attack/target_visible",10);
+    hit_pub_=nh->advertise<std_msgs::Bool>("/balloon_attack/hit_candidate",10,true);
 }
 
 PortsList VisualServo::providedPorts() {
@@ -49,6 +52,9 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("approach_center_limit_px", 48.0, "靠近时允许的最大水平偏差px"),
              InputPort<double>("sprint_center_limit_px", 24.0, "触发冲刺的最大水平偏差px"),
              InputPort<double>("brake_time", 0.50, "冲刺后悬停秒数"),
+             InputPort<double>("min_world_z", 0.90, "最低允许绝对高度m"),
+             InputPort<double>("max_descent_from_entry", 0.15, "视觉伺服最大下降量m"),
+             InputPort<double>("max_vertical_speed", 0.10, "最大升降速度m/s"),
              
              // 其他
              InputPort<double>("data_timeout", 1.0, "数据超时 (s)"),
@@ -76,13 +82,19 @@ NodeStatus VisualServo::onStart() {
     approach_center_limit_px_ = getInput<double>("approach_center_limit_px").value();
     sprint_center_limit_px_ = getInput<double>("sprint_center_limit_px").value();
     brake_time_ = getInput<double>("brake_time").value();
+    min_world_z_ = getInput<double>("min_world_z").value();
+    max_descent_ = getInput<double>("max_descent_from_entry").value();
+    max_servo_vz_ = getInput<double>("max_vertical_speed").value();
     if (!std::isfinite(forward_velocity_) || forward_velocity_ <= 0 ||
         !std::isfinite(sprint_velocity_) || sprint_velocity_ <= 0 ||
         !std::isfinite(sprint_time_) || sprint_time_ <= 0 ||
         !std::isfinite(max_sprint_yaw_rate_) || max_sprint_yaw_rate_ <= 0 ||
         !std::isfinite(approach_center_limit_px_) || approach_center_limit_px_ <= 0 ||
         !std::isfinite(sprint_center_limit_px_) || sprint_center_limit_px_ <= 0 ||
-        !std::isfinite(brake_time_) || brake_time_ < 0) {
+        !std::isfinite(brake_time_) || brake_time_ < 0 ||
+        !std::isfinite(min_world_z_) || min_world_z_ < 0.30 ||
+        !std::isfinite(max_descent_) || max_descent_ < 0.0 ||
+        !std::isfinite(max_servo_vz_) || max_servo_vz_ <= 0.0) {
         throw BT::RuntimeError("VisualServo invalid speed/alignment/brake parameters");
     }
     
@@ -93,6 +105,17 @@ NodeStatus VisualServo::onStart() {
     
     // 初始化状态机
     current_state_ = ALIGN;  // 先对准，再允许前进
+    if (!fcu_odom_ptr || fcu_odom_ptr->header.stamp.isZero())
+        throw BT::RuntimeError("VisualServo missing odom");
+    const auto initial=fcu_odom_ptr->pose.pose.position;
+    if (!std::isfinite(initial.x)||!std::isfinite(initial.y)||!std::isfinite(initial.z))
+        throw BT::RuntimeError("VisualServo invalid start pose");
+    floor_z_=std::max(min_world_z_,initial.z-max_descent_);
+    climbing_to_safe_z_=false;
+    target_visible_=false; strike_was_visible_=false;
+    std_msgs::Bool flag;flag.data=false;visible_pub_.publish(flag);hit_pub_.publish(flag);
+    ROS_INFO("[%s] VisualServo entry z=%.2f floor z=%.2f",name().c_str(),initial.z,floor_z_);
+    if(initial.z<floor_z_-0.02){sendHoverCommand();return NodeStatus::FAILURE;}
     has_ever_received_data_ = false;
     max_area_ratio_ = 0.0;
     align_stable_frames_ = 0;
@@ -119,8 +142,39 @@ NodeStatus VisualServo::onRunning() {
     const double dt = std::clamp((now - prev_time_).toSec(), 0.02, 0.10);
     prev_time_ = now;
 
-    if (current_state_ == BRAKING) {
+    if (!fcu_odom_ptr || fcu_odom_ptr->header.stamp.isZero() ||
+        !std::isfinite(fcu_odom_ptr->pose.pose.position.z)){
         sendHoverCommand();
+        return NodeStatus::FAILURE;
+    }
+    const auto& pose=fcu_odom_ptr->pose.pose;
+    const double z=pose.position.z;
+    if(climbing_to_safe_z_){
+        publishPosition(climb_goal_,climb_yaw_);
+        if(z>=floor_z_+0.09){
+            climbing_to_safe_z_=false;
+            current_state_=ALIGN;
+            align_stable_frames_=0;
+            prev_err_x_=prev_err_y_=0;
+        }else if((now-climb_start_).toSec()>4.0){
+            ROS_ERROR("[%s] VisualServo safe altitude recovery timeout",name().c_str());
+            sendHoverCommand();return NodeStatus::FAILURE;
+        }
+        return NodeStatus::RUNNING;
+    }
+    if(current_state_!=BRAKING && z<=floor_z_+0.04){
+        climbing_to_safe_z_=true;climb_start_=now;
+        climb_goal_=pose.position;climb_goal_.z=floor_z_+0.12;
+        climb_yaw_=PoseUtils::getYawFromQuat(pose.orientation);
+        ROS_WARN("[%s] VisualServo floor protection z=%.2f floor=%.2f",
+                 name().c_str(),z,floor_z_);
+        publishPosition(climb_goal_,climb_yaw_);
+        return NodeStatus::RUNNING;
+    }
+
+    if (current_state_ == BRAKING) {
+        // 悬停前先让速度闭环降速，避免在高速时抓取一个位置设定值。
+        publishVelocityWithYawRate(0,0,0,0);
         if ((now - brake_start_time_).toSec() >= brake_time_) {
             ROS_INFO("[%s] VisualServo BRAKE done: strike attempt complete.", name().c_str());
             return NodeStatus::SUCCESS;
@@ -128,12 +182,21 @@ NodeStatus VisualServo::onRunning() {
         return NodeStatus::RUNNING;
     }
 
+    // 按用户要求：冲刺开始并看见红球后，第一帧未见该颜色即触发停止。
+    if(current_state_==SPRINTING && strike_was_visible_ && !target_visible_){
+        std_msgs::Bool hit;hit.data=true;hit_pub_.publish(hit);
+        ROS_INFO("[%s] HIT_CANDIDATE: balloon vanished during strike, BRAKING now",name().c_str());
+        current_state_=BRAKING;brake_start_time_=now;
+        publishVelocityWithYawRate(0,0,0,0);
+        return NodeStatus::RUNNING;
+    }
     if (isTargetLost()) {
-        // 上一帧黑板目标不代表当前仍然看到球；冲刺丢目标必须立即停止。
-        sendHoverCommand();
         if (current_state_ == SPRINTING) {
-            ROS_WARN("[%s] VisualServo SPRINT aborted: target lost. No blind sprint.", name().c_str());
-            return NodeStatus::FAILURE;
+            // 掉帧超时同样终止冲刺，但不把通信异常当作命中。
+            ROS_WARN("[%s] SPRINT stopped after target timeout",name().c_str());
+            current_state_=BRAKING;brake_start_time_=now;
+            publishVelocityWithYawRate(0,0,0,0);
+            return NodeStatus::RUNNING;
         }
         current_state_ = ALIGN;
         align_stable_frames_ = 0;
@@ -149,7 +212,10 @@ NodeStatus VisualServo::onRunning() {
     const double err_y = last_target_.center_y - img_cy_;
     max_area_ratio_ = std::max(max_area_ratio_, ratio);
     const double yaw_rate = computeYawRate(err_x, dt);
-    const double vz = computeVz(err_y, dt);
+    // 保留小幅垂直对准；距离下限近时暂停所有升降像素伺服。
+    const double vz_raw=computeVz(err_y,dt);
+    const double vz=(z<floor_z_+0.14)?0.0:
+       std::clamp(vz_raw,-max_servo_vz_,max_servo_vz_);
 
     switch (current_state_) {
         case ALIGN: {
@@ -191,6 +257,7 @@ NodeStatus VisualServo::onRunning() {
                 std::abs(err_y) <= 55.0) {
                 current_state_ = SPRINTING;
                 sprint_start_time_ = now;
+                strike_was_visible_ = target_visible_;
                 ROS_INFO("[%s] APPROACH -> SPRINT area=%.3f err_x=%.1f",
                          name().c_str(), ratio, err_x);
             }
@@ -208,9 +275,10 @@ NodeStatus VisualServo::onRunning() {
                 break;
             }
             if (std::abs(err_x) > approach_center_limit_px_) {
-                sendHoverCommand();
-                ROS_WARN("[%s] SPRINT aborted: lateral error %.1fpx", name().c_str(), err_x);
-                return NodeStatus::FAILURE;
+                publishVelocityWithYawRate(0,0,0,0);
+                current_state_=BRAKING;brake_start_time_=now;
+                ROS_WARN("[%s] SPRINT stopped on lateral error %.1fpx",name().c_str(),err_x);
+                break;
             }
             // 冲刺期间极小幅调yaw，避免机头边大角度旋转边高速前进。
             const double limited_yaw = std::clamp(
@@ -291,6 +359,8 @@ void VisualServo::updateTargetData() {
         std::isfinite(current_target.timestamp) && current_target.timestamp > 0 &&
         (now_sec - current_target.timestamp) >= -0.2 &&
         (now_sec - current_target.timestamp) <= data_timeout_;
+    target_visible_=valid;
+    std_msgs::Bool visible;visible.data=target_visible_;visible_pub_.publish(visible);
     if (valid) {
         last_target_ = current_target;
         last_valid_detection_time_.fromSec(current_target.timestamp);

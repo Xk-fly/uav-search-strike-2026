@@ -12,6 +12,8 @@
     <!-- 启动检测 + 颜色分类节点（通过 conda wrapper 使用 GPU 版 PyTorch） -->
     <node name="object_detection_node" pkg="object_det" type="det_color_conda.sh" output="screen">
         <param name="param_namespace" value="object_detection" />
+        <!-- 目标消失需收到一帧空检测，才可迅速置 target_visible=false -->
+        <param name="publish_empty" value="true" />
     </node>
     
 </launch>

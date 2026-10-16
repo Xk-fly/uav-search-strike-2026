@@ -94,8 +94,8 @@
     <!-- yaw:  到达位置时的机头朝向 (rad)                -->
     <!-- ============================================ -->
     <!-- A区 (红色气球) -->
-    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;1.0"  type="str"/>
-    <param name="balloon_zone_A/goal"         value="5.3;1.0;1.0"  type="str"/>
+    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;1.15" type="str"/>
+    <param name="balloon_zone_A/goal"         value="5.3;1.0;1.15" type="str"/>
     <param name="balloon_zone_A/yaw"          value="1.5708"        type="double"/>
     <!-- B区 (紫色气球) -->
     <param name="balloon_zone_B/approach_pos" value="5.3;-2.0;0.7" type="str"/>
@@ -121,6 +121,9 @@
     <param name="visual_servo/approach_center_limit_px" value="48.0" type="double"/>
     <param name="visual_servo/sprint_center_limit_px" value="24.0" type="double"/>
     <param name="visual_servo/brake_time"              value="0.5"   type="double"/>
+    <param name="visual_servo/min_world_z"             value="0.90" type="double"/>
+    <param name="visual_servo/max_descent_from_entry"  value="0.15" type="double"/>
+    <param name="visual_servo/max_vertical_speed"      value="0.10" type="double"/>
 
     <!-- 运行任务节点（LLM 模式） -->
     <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">
