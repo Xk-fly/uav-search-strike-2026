@@ -48,6 +48,18 @@
     <param name="cross_frame/filter_window_size"  value="20"            type="double"/> <!-- 滤波窗口 -->
     <param name="cross_frame/offset_z"            value="1.0"           type="double"/> <!-- 规划z偏移 -->
 
+    <!-- ArUco 往返/反穿框前后精准移动（仅 PrecisionMove 使用，不修改普通 GoTo） -->
+    <param name="precision_move/max_speed"       value="0.35" type="double"/> <!-- 参考轨迹最大三维速度 m/s -->
+    <param name="precision_move/max_accel"       value="0.25" type="double"/> <!-- 参考轨迹加减速度 m/s^2 -->
+    <param name="precision_move/max_lead"        value="0.25" type="double"/> <!-- 位置参考点超前机体的最大沿线距离 m -->
+    <param name="precision_move/tolerance"       value="0.12" type="double"/> <!-- 最终三维位置误差 m -->
+    <param name="precision_move/speed_tolerance" value="0.10" type="double"/> <!-- 稳定时实际速度上限 m/s -->
+    <param name="precision_move/settle_time"     value="0.70" type="double"/> <!-- 达标持续时间 s -->
+    <param name="precision_move/timeout"         value="60.0" type="double"/> <!-- 单段执行最大时长 s -->
+    <param name="precision_move/odom_timeout"    value="1.00" type="double"/> <!-- 里程计失联阈值 s -->
+    <param name="precision_move/abort_speed"     value="0.70" type="double"/> <!-- 实际速度异常熔断 m/s -->
+    <param name="precision_move/yaw_rate"        value="0.50" type="double"/> <!-- 偏航设定角速度限幅 rad/s -->
+
     <!-- ArUco 检测 -->
     <param name="aruco/hover_pos" value="4.5;0.5;1.2" type="str"/>     <!-- 二维码上方悬停位置 -->
 

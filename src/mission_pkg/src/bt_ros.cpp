@@ -269,12 +269,10 @@ std::string commandToXmlNode(const std::string& command) {
     // ---- detect_aruco: 飞到二维码上方识别 ----
     if (cmd == "detect_aruco") {
         std::string hover = getStr("aruco/hover_pos", "-1.0;4.0;1.8");
+        // 先精确移动并稳定，再单独检测：避免 Parallel 中两个节点同时写飞行指令。
         return
-            "      <GoTo goal=\"" + hover + "\"/>\n"
-            "      <Parallel success_count=\"2\" failure_count=\"1\">\n"
-            "        <GoTo goal=\"" + hover + "\"/>\n"
-            "        <ArucoDetector aruco_id=\"{detected_aruco_id}\"/>\n"
-            "      </Parallel>\n";
+            "      <PrecisionMove goal=\"" + hover + "\"/>\n"
+            "      <ArucoDetector aruco_id=\"{detected_aruco_id}\"/>\n";
     }
     
     // ---- return_cross_frame: 返回并反向穿越方框 ----
@@ -286,15 +284,15 @@ std::string commandToXmlNode(const std::string& command) {
         
         return
             "      <!-- 旋转180度 -->\n"
-            "      <GoTo goal=\"" + turn_pos + "\" yaw=\"" + std::to_string(turn_yaw) + "\"/>\n"
+            "      <PrecisionMove goal=\"" + turn_pos + "\" yaw=\"" + std::to_string(turn_yaw) + "\"/>\n"
             "      <!-- 返回规划终点 -->\n"
-            "      <GoTo goal=\"{planning_end_pos}\"/>\n"
+            "      <PrecisionMove goal=\"{planning_end_pos}\"/>\n"
             "      <!-- 反向穿越方框 -->\n"
             "      <PlanningControl goal=\"{frame_center}\"/>\n"
             "      <!-- 机体系前进 -->\n"
-            "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\"/>\n"
+            "      <PrecisionMove goal=\"" + body_fwd + "\" frame=\"1\"/>\n"
             "      <!-- 掉头朝向气球区域 -->\n"
-            "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\" yaw=\"" + std::to_string(exit_yaw) + "\"/>\n";
+            "      <PrecisionMove goal=\"" + body_fwd + "\" frame=\"1\" yaw=\"" + std::to_string(exit_yaw) + "\"/>\n";
     }
     
     // ---- hit_balloon:颜色 ----
