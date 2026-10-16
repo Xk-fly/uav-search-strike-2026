@@ -44,7 +44,11 @@ PortsList VisualServo::providedPorts() {
              // 速度参数
              InputPort<double>("forward_velocity", 0.35, "逼近阶段前进速度 (m/s)"),
              InputPort<double>("sprint_velocity", 1.5, "冲刺速度 (m/s)"),
-             InputPort<double>("sprint_time", 1.2, "冲刺持续时间 (s)"),
+             InputPort<double>("sprint_time", 0.60, "冲刺持续时间 (s)"),
+             InputPort<double>("max_sprint_yaw_rate", 0.08, "冲刺最大偏航速率"),
+             InputPort<double>("approach_center_limit_px", 48.0, "靠近时允许的最大水平偏差px"),
+             InputPort<double>("sprint_center_limit_px", 24.0, "触发冲刺的最大水平偏差px"),
+             InputPort<double>("brake_time", 0.50, "冲刺后悬停秒数"),
              
              // 其他
              InputPort<double>("data_timeout", 1.0, "数据超时 (s)"),
@@ -68,6 +72,19 @@ NodeStatus VisualServo::onStart() {
     forward_velocity_ = getInput<double>("forward_velocity").value();
     sprint_velocity_ = getInput<double>("sprint_velocity").value();
     sprint_time_ = getInput<double>("sprint_time").value();
+    max_sprint_yaw_rate_ = getInput<double>("max_sprint_yaw_rate").value();
+    approach_center_limit_px_ = getInput<double>("approach_center_limit_px").value();
+    sprint_center_limit_px_ = getInput<double>("sprint_center_limit_px").value();
+    brake_time_ = getInput<double>("brake_time").value();
+    if (!std::isfinite(forward_velocity_) || forward_velocity_ <= 0 ||
+        !std::isfinite(sprint_velocity_) || sprint_velocity_ <= 0 ||
+        !std::isfinite(sprint_time_) || sprint_time_ <= 0 ||
+        !std::isfinite(max_sprint_yaw_rate_) || max_sprint_yaw_rate_ <= 0 ||
+        !std::isfinite(approach_center_limit_px_) || approach_center_limit_px_ <= 0 ||
+        !std::isfinite(sprint_center_limit_px_) || sprint_center_limit_px_ <= 0 ||
+        !std::isfinite(brake_time_) || brake_time_ < 0) {
+        throw BT::RuntimeError("VisualServo invalid speed/alignment/brake parameters");
+    }
     
     data_timeout_ = getInput<double>("data_timeout").value();
     approach_area_threshold_ = getInput<double>("approach_area_threshold").value();
@@ -75,7 +92,7 @@ NodeStatus VisualServo::onStart() {
     search_yaw_rate_ = getInput<double>("search_yaw_rate").value();
     
     // 初始化状态机
-    current_state_ = APPROACHING;  // 直接进入边飞边对齐模式（气球是移动目标）
+    current_state_ = ALIGN;  // 先对准，再允许前进
     has_ever_received_data_ = false;
     max_area_ratio_ = 0.0;
     align_stable_frames_ = 0;
@@ -98,126 +115,115 @@ NodeStatus VisualServo::onStart() {
 
 NodeStatus VisualServo::onRunning() {
     updateTargetData();
-    
-    // 计算时间步长
-    ros::Time now = ros::Time::now();
-    double dt = (now - prev_time_).toSec();
-    if (dt < 0.001) dt = 0.001;
-    
-    // 目标丢失处理（冲刺阶段不检查）
-    if (current_state_ != SPRINTING && isTargetLost()) {
-        if (max_area_ratio_ > approach_area_threshold_) {
-            sendHoverCommand();
-            ROS_INFO("[%s]: Target lost after approach (max_ratio=%.3f). SUCCESS.", 
-                     name().c_str(), max_area_ratio_);
+    const ros::Time now = ros::Time::now();
+    const double dt = std::clamp((now - prev_time_).toSec(), 0.02, 0.10);
+    prev_time_ = now;
+
+    if (current_state_ == BRAKING) {
+        sendHoverCommand();
+        if ((now - brake_start_time_).toSec() >= brake_time_) {
+            ROS_INFO("[%s] VisualServo BRAKE done: strike attempt complete.", name().c_str());
             return NodeStatus::SUCCESS;
         }
-        // 搜索模式：原地慢转
-        publishVelocityWithYawRate(0, 0, 0, search_yaw_rate_);
-        ROS_WARN_THROTTLE(1.0, "[%s]: Target lost. Searching (yaw_rate=%.2f)...", 
-                          name().c_str(), search_yaw_rate_);
         return NodeStatus::RUNNING;
     }
-    
-    // 计算基本量
-    double img_area = static_cast<double>(img_w_) * img_h_;
-    double current_ratio = last_target_.area() / img_area;
-    double err_x = last_target_.center_x - img_cx_;  // 正=目标在右侧
-    double err_y = last_target_.center_y - img_cy_;  // 正=目标在下方
-    
-    // 更新最大面积记录
-    if (current_ratio > max_area_ratio_) {
-        max_area_ratio_ = current_ratio;
+
+    if (isTargetLost()) {
+        // 上一帧黑板目标不代表当前仍然看到球；冲刺丢目标必须立即停止。
+        sendHoverCommand();
+        if (current_state_ == SPRINTING) {
+            ROS_WARN("[%s] VisualServo SPRINT aborted: target lost. No blind sprint.", name().c_str());
+            return NodeStatus::FAILURE;
+        }
+        current_state_ = ALIGN;
+        align_stable_frames_ = 0;
+        prev_err_x_ = prev_err_y_ = 0;
+        publishVelocityWithYawRate(0, 0, 0, search_yaw_rate_);
+        ROS_WARN_THROTTLE(1.0, "[%s] VisualServo lost target, searching with VX=0", name().c_str());
+        return NodeStatus::RUNNING;
     }
-    
-    // PD 控制计算
-    double yaw_rate = computeYawRate(err_x, dt);
-    double vz = computeVz(err_y, dt);
-    
-    // 更新微分状态
-    prev_time_ = now;
-    
-    // =========== 三阶段状态机 ===========
+
+    const double img_area = static_cast<double>(img_w_) * img_h_;
+    const double ratio = last_target_.area() / img_area;
+    const double err_x = last_target_.center_x - img_cx_;
+    const double err_y = last_target_.center_y - img_cy_;
+    max_area_ratio_ = std::max(max_area_ratio_, ratio);
+    const double yaw_rate = computeYawRate(err_x, dt);
+    const double vz = computeVz(err_y, dt);
+
     switch (current_state_) {
         case ALIGN: {
-            // 阶段1：对齐 — 原地旋转 + 升降，使目标居中
+            // 水平偏差过大时绝不允许向前移动，只调yaw及少量高度。
             publishVelocityWithYawRate(0, 0, vz, yaw_rate);
-            
-            if (isCentered()) {
-                align_stable_frames_++;
+            if (std::abs(err_x) <= sprint_center_limit_px_ &&
+                std::abs(err_y) <= 55.0) {
+                ++align_stable_frames_;
                 if (align_stable_frames_ >= ALIGN_STABLE_FRAMES_REQUIRED) {
                     current_state_ = APPROACHING;
                     align_stable_frames_ = 0;
-                    ROS_INFO("[%s]: Aligned! err:(%.0f,%.0f) -> APPROACHING", 
-                             name().c_str(), err_x, err_y);
+                    ROS_INFO("[%s] ALIGN stable -> APPROACHING (x=%.1fpx)", name().c_str(), err_x);
                 }
             } else {
                 align_stable_frames_ = 0;
             }
-            
-            ROS_INFO_THROTTLE(1.0, "[%s]: ALIGN - err:(%.0f,%.0f) yaw_rate:%.3f vz:%.3f stable:%d", 
-                             name().c_str(), err_x, err_y, yaw_rate, vz, align_stable_frames_);
+            ROS_INFO_THROTTLE(1.0, "[%s] ALIGN x=%.1f y=%.1f stable=%d",
+                              name().c_str(), err_x, err_y, align_stable_frames_);
             break;
         }
-        
         case APPROACHING: {
-            // 阶段2：靠近 — VX 前进 + yaw_rate + VZ，全程持续修正
-            // 根据对齐程度调节前进速度（越偏越慢）
-            double align_ratio = std::max(0.0, 1.0 - std::abs(err_x) / (img_w_ * 0.3));
-            double vx = forward_velocity_ * align_ratio;
-            
-            publishVelocityWithYawRate(vx, 0, vz, yaw_rate);
-            
-            // 对齐偏差过大 → 回到 ALIGN
-            if (std::abs(err_x) > img_w_ * center_tolerance_ * 3) {
+            if (std::abs(err_x) > approach_center_limit_px_) {
+                // 显著偏移时停止前进并重新对准，避免跟着转弯向墙体飘。
+                publishVelocityWithYawRate(0, 0, vz, yaw_rate);
                 current_state_ = ALIGN;
                 align_stable_frames_ = 0;
-                ROS_WARN("[%s]: Alignment lost (err_x=%.0f), back to ALIGN", 
+                ROS_WARN("[%s] APPROACH misaligned x=%.1fpx, stop VX -> ALIGN",
                          name().c_str(), err_x);
                 break;
             }
-            
-            // 面积达阈值 → 触发冲刺
-            if (current_ratio >= approach_area_threshold_) {
+            const double align_ratio = std::clamp(
+                1.0 - std::abs(err_x) / approach_center_limit_px_, 0.0, 1.0);
+            const double vx = forward_velocity_ * align_ratio;
+            publishVelocityWithYawRate(vx, 0, vz, yaw_rate);
+
+            // 只有目标较近且高度/水平方向对准时允许冲刺。
+            if (ratio >= approach_area_threshold_ &&
+                std::abs(err_x) <= sprint_center_limit_px_ &&
+                std::abs(err_y) <= 55.0) {
                 current_state_ = SPRINTING;
-                sprint_start_time_ = ros::Time::now();
-                ROS_INFO("[%s]: Area %.1f%% >= %.1f%% -> SPRINT! (sprint_vel=%.2f, time=%.1fs)", 
-                         name().c_str(), current_ratio*100, approach_area_threshold_*100,
-                         sprint_velocity_, sprint_time_);
+                sprint_start_time_ = now;
+                ROS_INFO("[%s] APPROACH -> SPRINT area=%.3f err_x=%.1f",
+                         name().c_str(), ratio, err_x);
             }
-            
-            ROS_INFO_THROTTLE(0.5, "[%s]: APPROACH - vx:%.2f(%.0f%%) yaw_rate:%.3f vz:%.3f err:(%.0f,%.0f) area:%.1f%%", 
-                             name().c_str(), vx, align_ratio*100, yaw_rate, vz, 
-                             err_x, err_y, current_ratio*100);
+            ROS_INFO_THROTTLE(0.5, "[%s] APPROACH vx=%.2f yaw_rate=%.3f err_x=%.1f area=%.3f",
+                              name().c_str(), vx, yaw_rate, err_x, ratio);
             break;
         }
-        
         case SPRINTING: {
-            // 阶段3：冲刺 — 全速前进，保持 yaw_rate 和 VZ 修正
-            double sprint_dt = (ros::Time::now() - sprint_start_time_).toSec();
-            
-            // 超时 → 完成
-            if (sprint_dt >= sprint_time_) {
+            const double elapsed = (now - sprint_start_time_).toSec();
+            if (elapsed >= sprint_time_) {
                 sendHoverCommand();
-                ROS_INFO("[%s]: Sprint completed (%.1fs). SUCCESS.", name().c_str(), sprint_dt);
-                return NodeStatus::SUCCESS;
+                brake_start_time_ = now;
+                current_state_ = BRAKING;
+                ROS_INFO("[%s] SPRINT -> BRAKING after %.2fs", name().c_str(), elapsed);
+                break;
             }
-            
-            // 冲刺中仍然持续修正 yaw_rate 和 vz（如果还看得到目标）
-            if (!isTargetLost()) {
-                publishVelocityWithYawRate(sprint_velocity_, 0, vz, yaw_rate);
-            } else {
-                // 目标丢失，保持直线冲刺
-                publishVelocityWithYawRate(sprint_velocity_, 0, 0, 0);
+            if (std::abs(err_x) > approach_center_limit_px_) {
+                sendHoverCommand();
+                ROS_WARN("[%s] SPRINT aborted: lateral error %.1fpx", name().c_str(), err_x);
+                return NodeStatus::FAILURE;
             }
-            
-            ROS_INFO_THROTTLE(0.2, "[%s]: SPRINT - vx:%.2f yaw_rate:%.3f vz:%.3f (%.1f/%.1fs)", 
-                             name().c_str(), sprint_velocity_, yaw_rate, vz,
-                             sprint_dt, sprint_time_);
+            // 冲刺期间极小幅调yaw，避免机头边大角度旋转边高速前进。
+            const double limited_yaw = std::clamp(
+                yaw_rate, -max_sprint_yaw_rate_, max_sprint_yaw_rate_);
+            publishVelocityWithYawRate(sprint_velocity_, 0,
+                std::clamp(vz, -0.15, 0.15), limited_yaw);
+            ROS_INFO_THROTTLE(0.3, "[%s] SPRINT vx=%.2f limited_yaw=%.3f t=%.2f/%.2f",
+                              name().c_str(), sprint_velocity_, limited_yaw, elapsed, sprint_time_);
             break;
         }
+        case BRAKING:
+            break; // 前面已处理
     }
-    
     return NodeStatus::RUNNING;
 }
 
@@ -276,9 +282,18 @@ void VisualServo::updateTargetData() {
     if (!target_res) return;
 
     PixelTarget current_target = target_res.value();
-    if (current_target.is_detected) {
+    const double now_sec = ros::Time::now().toSec();
+    // 不允许旧黑板值每tick伪装成新帧；使用TargetTracker填充的真实帧时间。
+    const bool valid = current_target.is_detected &&
+        std::isfinite(current_target.center_x) && std::isfinite(current_target.center_y) &&
+        std::isfinite(current_target.width) && std::isfinite(current_target.height) &&
+        current_target.width > 0 && current_target.height > 0 &&
+        std::isfinite(current_target.timestamp) && current_target.timestamp > 0 &&
+        (now_sec - current_target.timestamp) >= -0.2 &&
+        (now_sec - current_target.timestamp) <= data_timeout_;
+    if (valid) {
         last_target_ = current_target;
-        last_valid_detection_time_ = ros::Time::now(); 
+        last_valid_detection_time_.fromSec(current_target.timestamp);
         has_ever_received_data_ = true;
         
         double img_area = static_cast<double>(img_w_) * img_h_;

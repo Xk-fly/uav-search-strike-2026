@@ -112,9 +112,13 @@
     <param name="visual_servo/k_p_vz"                  value="0.01"  type="double"/>
     <param name="visual_servo/k_d_vz"                  value="0.006" type="double"/>
     <param name="visual_servo/approach_area_threshold"  value="0.08"  type="double"/>
-    <param name="visual_servo/forward_velocity"         value="1.0"   type="double"/>
-    <param name="visual_servo/sprint_velocity"          value="1.5"   type="double"/>
-    <param name="visual_servo/sprint_time"              value="1.2"   type="double"/>
+    <param name="visual_servo/forward_velocity"         value="0.4"   type="double"/>
+    <param name="visual_servo/sprint_velocity"          value="0.9"   type="double"/>
+    <param name="visual_servo/sprint_time"              value="0.6"   type="double"/>
+    <param name="visual_servo/max_sprint_yaw_rate"     value="0.08"  type="double"/>
+    <param name="visual_servo/approach_center_limit_px" value="48.0" type="double"/>
+    <param name="visual_servo/sprint_center_limit_px" value="24.0" type="double"/>
+    <param name="visual_servo/brake_time"              value="0.5"   type="double"/>
 
     <!-- 运行任务节点（LLM 模式） -->
     <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">

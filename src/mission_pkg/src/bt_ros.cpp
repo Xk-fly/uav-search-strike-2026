@@ -320,9 +320,13 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_k_p_vz   = std::to_string(getDbl("visual_servo/k_p_vz", 0.01));
         std::string vs_k_d_vz   = std::to_string(getDbl("visual_servo/k_d_vz", 0.006));
         std::string vs_area_th  = std::to_string(getDbl("visual_servo/approach_area_threshold", 0.08));
-        std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 1.0));
-        std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 1.5));
-        std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 1.2));
+        std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 0.4));
+        std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 0.9));
+        std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 0.6));
+        std::string vs_sprint_yaw = std::to_string(getDbl("visual_servo/max_sprint_yaw_rate", 0.08));
+        std::string vs_app_center = std::to_string(getDbl("visual_servo/approach_center_limit_px", 48.0));
+        std::string vs_sp_center = std::to_string(getDbl("visual_servo/sprint_center_limit_px", 24.0));
+        std::string vs_brake = std::to_string(getDbl("visual_servo/brake_time", 0.5));
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
@@ -343,7 +347,9 @@ std::string commandToXmlNode(const std::string& command) {
             "k_p_yaw_rate=\"" + vs_k_p_yaw + "\" k_d_yaw_rate=\"" + vs_k_d_yaw + "\" "
             "k_p_vz=\"" + vs_k_p_vz + "\" k_d_vz=\"" + vs_k_d_vz + "\" "
             "approach_area_threshold=\"" + vs_area_th + "\" "
-            "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\"/>\n"
+            "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\" "
+            "max_sprint_yaw_rate=\"" + vs_sprint_yaw + "\" approach_center_limit_px=\"" + vs_app_center + "\" "
+            "sprint_center_limit_px=\"" + vs_sp_center + "\" brake_time=\"" + vs_brake + "\"/>\n"
             "          </Parallel>\n"
             "        </Timeout>\n"
             "      </ForceSuccess>\n";

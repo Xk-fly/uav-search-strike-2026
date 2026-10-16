@@ -23,7 +23,8 @@ private:
     enum ServoState {
         ALIGN,      // 对齐：原地旋转 yaw_rate，使目标水平居中
         APPROACHING, // 靠近：VX 前进 + yaw_rate + VZ 修正
-        SPRINTING   // 冲刺：全速 VX 冲刺一段固定时间
+        SPRINTING,  // 受限速度和偏航的短程打击
+        BRAKING     // 冲刺后悬停缓冲
     };
     
     // 状态
@@ -33,6 +34,7 @@ private:
     bool has_ever_received_data_;
     double max_area_ratio_;
     ros::Time sprint_start_time_;
+    ros::Time brake_start_time_;
     int align_stable_frames_;
     
     // 相机参数
@@ -54,7 +56,11 @@ private:
     // 前进速度参数
     double forward_velocity_;       // 逼近阶段前进速度 (m/s)
     double sprint_velocity_;        // 冲刺速度 (m/s)
-    double sprint_time_;            // 冲刺持续时间 (s)
+    double sprint_time_;
+    double max_sprint_yaw_rate_{0.08};
+    double approach_center_limit_px_{48.0};
+    double sprint_center_limit_px_{24.0};
+    double brake_time_{0.50};            // 冲刺持续时间 (s)
     
     // 其他参数
     double data_timeout_;           // 数据超时 (s)
