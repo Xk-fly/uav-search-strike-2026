@@ -61,6 +61,7 @@ file(GLOB_RECURSE SOURCE_FILES
 
 # 显式将新 PrecisionMove 插件加入构建：已有工作区可能不会因为新增文件自动重新扫描 GLOB。
 list(APPEND SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/nodes/action/precision_move.cpp")
+list(APPEND SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/nodes/perception/balloon_observe.cpp")
 list(REMOVE_DUPLICATES SOURCE_FILES)
 
 foreach(SOURCE_FILE ${SOURCE_FILES})

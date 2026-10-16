@@ -234,8 +234,12 @@ class ObjectDetectionColorNode:
         self.bridge = None  # 不再使用 cv_bridge（Boost.Python 版本冲突）
 
         # 控制标志
-        self._detection_enabled = True
-        self.show_visualization = rospy.get_param('/object_detection/visualization/show_window', False)
+        # 前视默认开启；下视实例仅在回退扫描时通过控制topic开启推理。
+        self._detection_enabled = bool(rospy.get_param('~initially_enabled', True))
+        self.source_id = int(rospy.get_param('~source_id', 0))
+        self.publish_empty = bool(rospy.get_param('~publish_empty', False))
+        ns = rospy.get_param('~param_namespace', 'object_detection')
+        self.show_visualization = rospy.get_param(f'/{ns}/visualization/show_window', False)
         self._first_image_received = False
         self._cached_balloon_centers = {}
 
@@ -352,6 +356,11 @@ class ObjectDetectionColorNode:
             objects_msg = self._process_detections(detections, image_bgr, msg.header)
             self.objects_pub.publish(objects_msg)
             rospy.logdebug(f"Detected {len(detections)} objects")
+        elif self.publish_empty:
+            empty = Objects()
+            empty.header = msg.header
+            empty.source_id = self.source_id
+            self.objects_pub.publish(empty)
 
         processing_time_ms = (time.time() - start_time) * 1000.0
 
@@ -363,7 +372,7 @@ class ObjectDetectionColorNode:
     def _process_detections(self, detections, image_bgr, header) -> Objects:
         objects_msg = Objects()
         objects_msg.header = header
-        objects_msg.source_id = 0
+        objects_msg.source_id = self.source_id
 
         for det in detections:
             x1, y1, x2, y2, conf, cls_id = det

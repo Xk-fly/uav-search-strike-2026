@@ -38,7 +38,8 @@ PrecisionMove::PrecisionMove(const std::string& name, const NodeConfig& config)
 
 PortsList PrecisionMove::providedPorts() {
     return {
-        InputPort<Position3D>("goal", "终点坐标 x;y;z"),
+        InputPort<Position3D>("goal", "可选终点坐标 x;y;z"),
+        InputPort<double>("height", "可选世界绝对高度(m)，保持当前XY"),
         InputPort<double>("yaw", "可选终点绝对偏航(rad)"),
         InputPort<int>("frame", 0, "0=world ENU, 1=相对起始机体坐标")
     };
@@ -116,7 +117,10 @@ NodeStatus PrecisionMove::onStart() {
     if (!odomValid()) return failSafe("odom missing, stale or invalid");
 
     auto goal_res = getInput<Position3D>("goal");
-    if (!goal_res) return failSafe("missing goal");
+    auto height_res = getInput<double>("height");
+    auto yaw_res = getInput<double>("yaw");
+    if (goal_res && height_res) return failSafe("goal and height cannot coexist");
+    if (!goal_res && !height_res && !yaw_res) return failSafe("missing goal/height/yaw");
     auto frame_res = getInput<int>("frame");
     const int frame = frame_res.value();
     if (frame != 0 && frame != 1) return failSafe("frame must be 0 or 1");
@@ -125,21 +129,27 @@ NodeStatus PrecisionMove::onStart() {
     start_yaw_ = PoseUtils::getYawFromQuat(fcu_odom_ptr->pose.pose.orientation);
     if (!std::isfinite(start_yaw_)) return failSafe("invalid starting yaw");
 
-    const Position3D goal = goal_res.value();
-    if (!(std::isfinite(goal.x) && std::isfinite(goal.y) && std::isfinite(goal.z)))
-        return failSafe("non-finite goal");
-    if (frame == 1) {
-        // 对齐原 GoTo 的机体系相对目标：x 前、y 左、z 上。
-        target_pos_.x = start_pos_.x + goal.x * std::cos(start_yaw_) - goal.y * std::sin(start_yaw_);
-        target_pos_.y = start_pos_.y + goal.x * std::sin(start_yaw_) + goal.y * std::cos(start_yaw_);
-        target_pos_.z = start_pos_.z + goal.z;
-    } else {
-        target_pos_.x = goal.x;
-        target_pos_.y = goal.y;
-        target_pos_.z = goal.z;
+    // yaw-only：完全保持初始XYZ；height-only：只改变Z，XY不变。
+    target_pos_ = start_pos_;
+    if (goal_res) {
+        const Position3D goal = goal_res.value();
+        if (!(std::isfinite(goal.x) && std::isfinite(goal.y) && std::isfinite(goal.z)))
+            return failSafe("non-finite goal");
+        if (frame == 1) {
+            target_pos_.x = start_pos_.x + goal.x * std::cos(start_yaw_) - goal.y * std::sin(start_yaw_);
+            target_pos_.y = start_pos_.y + goal.x * std::sin(start_yaw_) + goal.y * std::cos(start_yaw_);
+            target_pos_.z = start_pos_.z + goal.z;
+        } else {
+            target_pos_.x = goal.x;
+            target_pos_.y = goal.y;
+            target_pos_.z = goal.z;
+        }
+    } else if (height_res) {
+        if (frame != 0) return failSafe("height requires world frame");
+        target_pos_.z = height_res.value();
     }
 
-    const auto yaw_res = getInput<double>("yaw");
+
     check_yaw_ = static_cast<bool>(yaw_res);
     target_yaw_ = check_yaw_ ? yaw_res.value() : start_yaw_;
     if (!finitePoint(target_pos_) || !std::isfinite(target_yaw_))

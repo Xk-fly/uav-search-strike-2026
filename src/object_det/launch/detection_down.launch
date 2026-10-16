@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- 独立下视识别：前视YOLO/objects与VisualServo完全不受此话题影响。 -->
+  <arg name="config_file" default="$(find object_det)/config/detection_down_params.yaml"/>
+  <rosparam command="load" file="$(arg config_file)" ns="object_detection_down"/>
+  <node pkg="object_det" type="det_color_conda.sh" name="object_detection_down_node" output="screen">
+    <param name="param_namespace" value="object_detection_down"/>
+    <param name="source_id" value="2"/>
+    <param name="initially_enabled" value="false"/>
+    <param name="publish_empty" value="true"/>
+  </node>
+</launch>
