@@ -329,7 +329,10 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_app_center = std::to_string(getDbl("visual_servo/approach_center_limit_px", 48.0));
         std::string vs_sp_center = std::to_string(getDbl("visual_servo/sprint_center_limit_px", 24.0));
         std::string vs_brake = std::to_string(getDbl("visual_servo/brake_time", 0.5));
-        std::string vs_floor = std::to_string(getDbl("visual_servo/min_world_z", 0.90));
+        // A区车道保持较高安全下限；B/C区保留原0.7m区域航点，
+        // 分区设置安全下限，避免本轮A区高度保护意外使其它颜色任务无法启动。
+        double default_floor = (zone == "A") ? getDbl("visual_servo/min_world_z", 0.90) : 0.55;
+        std::string vs_floor = std::to_string(getDbl(param_prefix + "/min_world_z", default_floor));
         std::string vs_descent = std::to_string(getDbl("visual_servo/max_descent_from_entry", 0.15));
         std::string vs_max_vz = std::to_string(getDbl("visual_servo/max_vertical_speed", 0.10));
         
