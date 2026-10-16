@@ -59,6 +59,10 @@ file(GLOB_RECURSE SOURCE_FILES
     "${LIBSOURCE}/decorator/*.cpp"
 )
 
+# 显式将新 PrecisionMove 插件加入构建：已有工作区可能不会因为新增文件自动重新扫描 GLOB。
+list(APPEND SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/nodes/action/precision_move.cpp")
+list(REMOVE_DUPLICATES SOURCE_FILES)
+
 foreach(SOURCE_FILE ${SOURCE_FILES})
     # 排除备份文件
     if(SOURCE_FILE MATCHES ".*\\.orig")
