@@ -40,6 +40,8 @@ PortsList PrecisionMove::providedPorts() {
     return {
         InputPort<Position3D>("goal", "可选终点坐标 x;y;z"),
         InputPort<double>("height", "可选世界绝对高度(m)，保持当前XY"),
+        InputPort<Position3D>("face_goal", "不移动XYZ，仅朝向目标点"),
+        InputPort<double>("yaw_rate", "可选偏航速率限幅rad/s"),
         InputPort<double>("yaw", "可选终点绝对偏航(rad)"),
         InputPort<int>("frame", 0, "0=world ENU, 1=相对起始机体坐标")
     };
@@ -115,12 +117,21 @@ NodeStatus PrecisionMove::onStart() {
         return failSafe("invalid precision_move params");
     }
     if (!odomValid()) return failSafe("odom missing, stale or invalid");
+    auto yaw_rate_res = getInput<double>("yaw_rate");
+    if (yaw_rate_res) {
+        yaw_rate_limit_ = yaw_rate_res.value();
+        if (!std::isfinite(yaw_rate_limit_) || yaw_rate_limit_ <= 0 || yaw_rate_limit_ > 1.0)
+            return failSafe("invalid yaw_rate override");
+    }
 
     auto goal_res = getInput<Position3D>("goal");
     auto height_res = getInput<double>("height");
     auto yaw_res = getInput<double>("yaw");
+    auto face_res = getInput<Position3D>("face_goal");
     if (goal_res && height_res) return failSafe("goal and height cannot coexist");
-    if (!goal_res && !height_res && !yaw_res) return failSafe("missing goal/height/yaw");
+    if (yaw_res && face_res) return failSafe("yaw and face_goal cannot coexist");
+    if (!goal_res && !height_res && !yaw_res && !face_res)
+        return failSafe("missing goal/height/yaw/face_goal");
     auto frame_res = getInput<int>("frame");
     const int frame = frame_res.value();
     if (frame != 0 && frame != 1) return failSafe("frame must be 0 or 1");
@@ -150,8 +161,20 @@ NodeStatus PrecisionMove::onStart() {
     }
 
 
-    check_yaw_ = static_cast<bool>(yaw_res);
-    target_yaw_ = check_yaw_ ? yaw_res.value() : start_yaw_;
+    check_yaw_ = static_cast<bool>(yaw_res) || static_cast<bool>(face_res);
+    target_yaw_ = yaw_res ? yaw_res.value() : start_yaw_;
+    if (face_res) {
+        const Position3D p = face_res.value();
+        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z))
+            return failSafe("invalid face_goal");
+        const double dx = p.x - start_pos_.x;
+        const double dy = p.y - start_pos_.y;
+        if (std::hypot(dx, dy) < 0.10)
+            return failSafe("face_goal too close");
+        target_yaw_ = std::atan2(dy, dx);
+        ROS_INFO("[%s] PrecisionMove face_goal yaw=%.3f to (%.2f,%.2f)",
+                 name().c_str(), target_yaw_, p.x, p.y);
+    }
     if (!finitePoint(target_pos_) || !std::isfinite(target_yaw_))
         return failSafe("invalid transformed target/yaw");
 

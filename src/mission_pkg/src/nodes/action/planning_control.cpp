@@ -26,6 +26,8 @@ PlanningControl::PlanningControl(const std::string& name, const NodeConfig& conf
 
 PortsList PlanningControl::providedPorts() {
     return { InputPort<Position3D>("goal", "目标点(x;y;z)"),
+             InputPort<Position3D>("through_from", "首次穿框终点"),
+             InputPort<double>("through_distance", 1.0, "越过框中心的距离(米)"),
              InputPort<double>("offset_z", 0.0, "相对于目标的Z轴偏移(随飞机航向)"),
              InputPort<double>("tolerance", "到达容差"),
              InputPort<bool>("control_yaw", false, "是否控制偏航角"),
@@ -49,6 +51,25 @@ void PlanningControl::initializeTarget(const Position3D& pos) {
     double target_x = target_pos_.x + offset_z * cos(yaw);
     double target_y = target_pos_.y + offset_z * sin(yaw);
     double target_z = target_pos_.z;
+    const auto through_res = getInput<Position3D>("through_from");
+    if (through_res) {
+        // 从首次穿框终点指向框中心，再延长1m；绝不能按当前机头yaw直接加1。
+        const auto from = through_res.value();
+        const double extra = getInput<double>("through_distance").value();
+        const double dx = pos.x - from.x, dy = pos.y - from.y;
+        const double length = std::hypot(dx, dy);
+        if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(extra) ||
+            length < 0.30 || extra < 0.50 || extra > 2.0 ||
+            std::abs(offset_z) > 1e-6) {
+            ROS_ERROR("[%s] invalid reverse-frame geometry", name().c_str());
+            throw BT::RuntimeError("invalid reverse-frame geometry");
+        }
+        target_x = pos.x + extra * dx / length;
+        target_y = pos.y + extra * dy / length;
+        target_z = pos.z;
+        ROS_INFO("[%s] reverse-through center=(%.2f,%.2f,%.2f) exit=(%.2f,%.2f,%.2f)",
+                 name().c_str(), pos.x, pos.y, pos.z, target_x, target_y, target_z);
+    }
 
     // 向规划器发送目标（都使用 ENU，直接发送）
     geometry_msgs::PoseStamped ps;

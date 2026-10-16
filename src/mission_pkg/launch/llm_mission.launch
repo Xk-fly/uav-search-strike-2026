@@ -60,19 +60,13 @@
     <param name="precision_move/abort_speed"     value="0.70" type="double"/> <!-- 实际速度异常熔断 m/s -->
     <param name="precision_move/yaw_rate"        value="0.50" type="double"/> <!-- 偏航设定角速度限幅 rad/s -->
 
-    <!-- 本轮气球前视扫描/下视观测（下视不参与视觉伺服） -->
-    <param name="balloon_search/front_yaw_rate" value="0.30" type="double"/>
-    <param name="balloon_search/front_timeout" value="26.0" type="double"/>
-    <param name="balloon_search/confidence" value="0.75" type="double"/>
-    <param name="balloon_search/raise_height" value="1.60" type="double"/>
-    <param name="balloon_search/down_timeout" value="10.0" type="double"/>
-
     <!-- ArUco 检测 -->
     <param name="aruco/hover_pos" value="4.5;0.5;1.2" type="str"/>     <!-- 二维码上方悬停位置 -->
 
+    <!-- 返程动态朝向与单次反穿框额外前进1m -->
+    <param name="return_cross_frame/yaw_rate" value="0.35" type="double"/>
+    <param name="return_cross_frame/exit_distance" value="1.0" type="double"/>
     <!-- 返回穿越方框 -->
-    <param name="return_cross_frame/turn_yaw"     value="3.14159"        type="double"/> <!-- 转向航向(rad) -->
-    <param name="return_cross_frame/body_forward"  value="0.5;0.0;0.0"   type="str"/>    <!-- 机体系前进距离 -->
 
     <!-- 降落 -->
     <param name="land/return_safe_pos" value="0.0;0.0;1.0" type="str"/>
@@ -90,7 +84,6 @@
     <!-- ============================================ -->
     <!-- 穿回框后掉头朝向                               -->
     <!-- ============================================ -->
-    <param name="return_cross_frame/exit_yaw" value="0.0" type="double"/>
 
     <!-- ============================================ -->
     <!-- 气球打击区域配置（比赛前调整）                   -->

@@ -275,25 +275,21 @@ std::string commandToXmlNode(const std::string& command) {
             "      <ArucoDetector aruco_id=\"{detected_aruco_id}\"/>\n";
     }
     
-    // ---- return_cross_frame: 返回并反向穿越方框 ----
+    // ---- return_cross_frame: 动态返回，Ego单次反穿框后继续1m ----
     if (cmd == "return_cross_frame") {
-        double      turn_yaw     = getDbl("return_cross_frame/turn_yaw",   3.14159);
-        std::string body_fwd     = getStr("return_cross_frame/body_forward", "0.5;0.0;0.0");
-        double      exit_yaw     = getDbl("return_cross_frame/exit_yaw",   0.0);
-        
+        const double yaw_rate = getDbl("return_cross_frame/yaw_rate", 0.35);
+        const double exit_distance = getDbl("return_cross_frame/exit_distance", 1.0);
         return
-            "      <!-- 保持ArUco识别高度原地转向 -->\n"
-            "      <PrecisionMove yaw=\"" + std::to_string(turn_yaw) + "\"/>\n"
-            "      <!-- 沿首次穿框保存的完整XYZ位置低速返回，允许斜向升降 -->\n"
+            "      <!-- 原地朝向首次穿框后的记录点 -->\n"
+            "      <PrecisionMove face_goal=\"{planning_end_pos}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n"
+            "      <!-- 使用完整记录的XYZ平滑斜向返回 -->\n"
             "      <PrecisionMove goal=\"{planning_end_pos}\"/>\n"
-            "      <!-- 反向穿越方框 -->\n"
-            "      <PlanningControl goal=\"{frame_center}\"/>\n"
-            "      <!-- 机体系前进 -->\n"
-            "      <PrecisionMove goal=\"" + body_fwd + "\" frame=\"1\"/>\n"
-            "      <!-- 掉头朝向气球区域 -->\n"
-            "      <PrecisionMove goal=\"" + body_fwd + "\" frame=\"1\" yaw=\"" + std::to_string(exit_yaw) + "\"/>\n";
+            "      <!-- Ego一次反穿框并沿穿框方向继续1m；不拆分两次0.5m -->\n"
+            "      <PlanningControl goal=\"{frame_center}\" through_from=\"{planning_end_pos}\" through_distance=\"" + std::to_string(exit_distance) + "\"/>\n"
+            "      <!-- 完全离框后，原地朝向已保存的框中心 -->\n"
+            "      <PrecisionMove face_goal=\"{frame_center}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n";
     }
-    
+
     // ---- hit_balloon:颜色 ----
     if (cmd.rfind("hit_balloon", 0) == 0) {
         std::string color = "red";
@@ -331,22 +327,8 @@ std::string commandToXmlNode(const std::string& command) {
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
         
-        // 本轮只新增前视扫描→失败时升高→下视YOLO观测；原区域航点与VisualServo保持原样。
-        std::string scan_vel = std::to_string(getDbl("balloon_search/front_yaw_rate", 0.30));
-        std::string scan_timeout = std::to_string(getDbl("balloon_search/front_timeout", 26.0));
-        std::string scan_conf = std::to_string(getDbl("balloon_search/confidence", 0.75));
-        std::string down_height = std::to_string(getDbl("balloon_search/raise_height", 1.60));
-        std::string down_timeout = std::to_string(getDbl("balloon_search/down_timeout", 10.0));
-
+        // 仍经原A/B/C固定区域的Ego-Planner接近，暂不执行扫描或升高。
         return
-            "      <Fallback name=\"BalloonSearchFallback\">\n"
-            "        <BalloonObserve mode=\"front\" object_name=\"" + balloon_name + "\" confidence_threshold=\"" + scan_conf + "\" scan_yaw_rate=\"" + scan_vel + "\" timeout=\"" + scan_timeout + "\"/>\n"
-            "        <Sequence name=\"DownSearch\">\n"
-            "          <PrecisionMove height=\"" + down_height + "\"/>\n"
-            "          <BalloonObserve mode=\"down\" object_name=\"" + balloon_name + "\" confidence_threshold=\"" + scan_conf + "\" timeout=\"" + down_timeout + "\"/>\n"
-            "        </Sequence>\n"
-            "      </Fallback>\n"
-            "      <!-- 本轮搜索后仍执行原有区域接近和VisualServo -->\n"
             "      <!-- 规划飞到气球打击区域" + zone + " -->\n"
             "      <PlanningControl goal=\"" + approach_pos + "\"/>\n"
             "      <!-- 转向朝向" + zone + "区气球(" + color + ") -->\n"
