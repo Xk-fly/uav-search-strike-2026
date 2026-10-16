@@ -377,7 +377,7 @@ std::string commandToXmlNode(const std::string& command) {
             "      <!-- 先保留上一动作的悬停指令，缓冲残余动量 -->\n"
             "      <Delay delay_msec=\"" + hold_ms + "\"><AlwaysSuccess/></Delay>\n"
             "      <!-- Ego局部规划返航到起点上方 -->\n"
-            "      <PlanningControl goal=\"" + safe + "\"/>\n"
+            "      <Timeout msec=\"90000\"><PlanningControl goal=\"" + safe + "\"/></Timeout>\n"
             "      <!-- 精准移动到降落准备点 -->\n"
             "      <PrecisionMove goal=\"" + ret_pos + "\" yaw=\"" + std::to_string(ret_yaw) + "\"/>\n"
             "      <Land/>\n";
