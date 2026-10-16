@@ -69,6 +69,15 @@ NodeStatus StableHover::onRunning() {
     if (!odomOk(now)) return stopWithFailure("odom stale/non-finite");
     if ((now-start_time_).toSec()>timeout_) return stopWithFailure("braking timeout");
 
+    // 超过0.4s没有新真实位置，不能沿用旧速度宣称已经悬停。
+    if ((now-last_odom_stamp_).toSec()>0.40) {
+        speed_ready_=false;
+        stable_since_=ros::Time(0);
+        phase_=Phase::BRAKE;
+        zeroVelocity();
+        ROS_WARN_THROTTLE(1.0,"[%s] StableHover waiting for fresh odom samples",name().c_str());
+        return NodeStatus::RUNNING;
+    }
     const auto pos=fcu_odom_ptr->pose.pose.position;
     const double dt=(now-sample_time_).toSec();
     if (dt>=sample_interval_ && fcu_odom_ptr->header.stamp>last_odom_stamp_) {

@@ -12,6 +12,7 @@
 #include "nodes/action/visual_servo.h"
 #include <algorithm>
 #include <std_msgs/Bool.h>
+#include "utils/pose_utils.h"
 #include <cmath>
 
 
@@ -112,7 +113,7 @@ NodeStatus VisualServo::onStart() {
         throw BT::RuntimeError("VisualServo invalid start pose");
     floor_z_=std::max(min_world_z_,initial.z-max_descent_);
     climbing_to_safe_z_=false;
-    target_visible_=false; strike_was_visible_=false;
+    target_visible_=false; strike_was_visible_=false; explicit_no_target_frame_=false;
     std_msgs::Bool flag;flag.data=false;visible_pub_.publish(flag);hit_pub_.publish(flag);
     ROS_INFO("[%s] VisualServo entry z=%.2f floor z=%.2f",name().c_str(),initial.z,floor_z_);
     if(initial.z<floor_z_-0.02){sendHoverCommand();return NodeStatus::FAILURE;}
@@ -183,7 +184,7 @@ NodeStatus VisualServo::onRunning() {
     }
 
     // 按用户要求：冲刺开始并看见红球后，第一帧未见该颜色即触发停止。
-    if(current_state_==SPRINTING && strike_was_visible_ && !target_visible_){
+    if(current_state_==SPRINTING && strike_was_visible_ && explicit_no_target_frame_){
         std_msgs::Bool hit;hit.data=true;hit_pub_.publish(hit);
         ROS_INFO("[%s] HIT_CANDIDATE: balloon vanished during strike, BRAKING now",name().c_str());
         current_state_=BRAKING;brake_start_time_=now;
@@ -268,7 +269,7 @@ NodeStatus VisualServo::onRunning() {
         case SPRINTING: {
             const double elapsed = (now - sprint_start_time_).toSec();
             if (elapsed >= sprint_time_) {
-                sendHoverCommand();
+                publishVelocityWithYawRate(0,0,0,0);
                 brake_start_time_ = now;
                 current_state_ = BRAKING;
                 ROS_INFO("[%s] SPRINT -> BRAKING after %.2fs", name().c_str(), elapsed);
@@ -360,6 +361,11 @@ void VisualServo::updateTargetData() {
         (now_sec - current_target.timestamp) >= -0.2 &&
         (now_sec - current_target.timestamp) <= data_timeout_;
     target_visible_=valid;
+    // 只有新的无目标检测结果(通过Tracker输出invalid)才当作红球消失。
+    explicit_no_target_frame_=(!current_target.is_detected &&
+        current_target.timestamp>0 &&
+        (now_sec-current_target.timestamp)>=-0.2 &&
+        (now_sec-current_target.timestamp)<=data_timeout_);
     std_msgs::Bool visible;visible.data=target_visible_;visible_pub_.publish(visible);
     if (valid) {
         last_target_ = current_target;

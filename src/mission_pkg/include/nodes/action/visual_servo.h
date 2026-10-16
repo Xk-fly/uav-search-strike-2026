@@ -38,6 +38,7 @@ private:
     ros::Time brake_start_time_;
     bool target_visible_{false};
     bool strike_was_visible_{false};
+    bool explicit_no_target_frame_{false};
     ros::Publisher visible_pub_, hit_pub_;
     double min_world_z_{0.90}, max_descent_{0.15}, max_servo_vz_{0.10};
     double floor_z_{0.90};
