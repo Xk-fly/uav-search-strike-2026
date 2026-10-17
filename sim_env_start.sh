@@ -239,7 +239,9 @@ fi
 echo ""
 echo -e "${GREEN}[9/11] 启动 LLM 任务节点 [独立 xterm] ...${NC}"
 
-mkdir -p /tmp/mission_logs
+# 所有比赛Demo rosbag统一存放到用户主目录，不再写入/tmp临时目录
+mkdir -p "${HOME}/uav_demo_bags"
+echo "本次 rosbag 保存目录: ${HOME}/uav_demo_bags"
 
 xterm $XTERM_OPTS -T "Mission (llm_mission)" \
     -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch mission_pkg llm_mission.launch 2>&1; echo \"Press Enter to close\"; read; exec bash'" &

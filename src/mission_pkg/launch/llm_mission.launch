@@ -147,7 +147,7 @@
 
     <!-- 日志录制（可选，默认关闭） -->
     <arg name="enable_logging" default="true"/>
-    <arg name="log_dir" default="/tmp/mission_logs"/>
+    <arg name="log_dir" default="$(env HOME)/uav_demo_bags"/>
     
     <node if="$(arg enable_logging)" 
           pkg="rosbag" 
