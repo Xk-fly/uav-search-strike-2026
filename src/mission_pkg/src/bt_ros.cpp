@@ -321,13 +321,13 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_k_d_yaw  = std::to_string(getDbl("visual_servo/k_d_yaw_rate", 0.008));
         std::string vs_k_p_vz   = std::to_string(getDbl("visual_servo/k_p_vz", 0.01));
         std::string vs_k_d_vz   = std::to_string(getDbl("visual_servo/k_d_vz", 0.006));
-        std::string vs_area_th  = std::to_string(getDbl("visual_servo/approach_area_threshold", 0.08));
+        std::string vs_area_th  = std::to_string(getDbl(param_prefix + "/approach_area_threshold", getDbl("visual_servo/approach_area_threshold", 0.08)));
         std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 0.4));
         std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 0.9));
         std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 0.6));
         std::string vs_sprint_yaw = std::to_string(getDbl("visual_servo/max_sprint_yaw_rate", 0.08));
-        std::string vs_app_center = std::to_string(getDbl("visual_servo/approach_center_limit_px", 48.0));
-        std::string vs_sp_center = std::to_string(getDbl("visual_servo/sprint_center_limit_px", 24.0));
+        std::string vs_app_center = std::to_string(getDbl(param_prefix + "/approach_center_limit_px", getDbl("visual_servo/approach_center_limit_px", 48.0)));
+        std::string vs_sp_center = std::to_string(getDbl(param_prefix + "/sprint_center_limit_px", getDbl("visual_servo/sprint_center_limit_px", 24.0)));
         std::string vs_brake = std::to_string(getDbl("visual_servo/brake_time", 0.5));
         // A区车道保持较高安全下限；B/C区保留原0.7m区域航点，
         // 分区设置安全下限，避免本轮A区高度保护意外使其它颜色任务无法启动。
@@ -335,19 +335,27 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_floor = std::to_string(getDbl(param_prefix + "/min_world_z", default_floor));
         std::string vs_descent = std::to_string(getDbl("visual_servo/max_descent_from_entry", 0.15));
         std::string vs_max_vz = std::to_string(getDbl("visual_servo/max_vertical_speed", 0.10));
+        const bool a_zone = (zone == "A");
+        const std::string a_bool = a_zone ? "true" : "false";
+        std::string vs_frames = std::to_string((int)getDbl(param_prefix + "/align_frames_required", a_zone ? 3 : 5));
+        std::string vs_vertical_tol = std::to_string(getDbl(param_prefix + "/sprint_vertical_limit_px", a_zone ? 130.0 : 55.0));
+        std::string vs_first_yaw_range = std::to_string(getDbl(param_prefix + "/initial_search_max_yaw_rad", 0.60));
+        std::string vs_data_timeout = std::to_string(getDbl(param_prefix + "/data_timeout", a_zone ? 0.40 : 1.0));
+        std::string vs_search_rate = std::to_string(getDbl(param_prefix + "/search_yaw_rate", a_zone ? 0.12 : 0.3));
+        int strike_timeout_ms = (int)getDbl(param_prefix + "/strike_timeout_ms", a_zone ? 90000.0 : 50000.0);
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
         
-        // 仍经原A/B/C固定区域的Ego-Planner接近，暂不执行扫描或升高。
+        // 仅在Ego到达A区并完成GoTo定向后，才启动TargetTracker和VisualServo；
+        // 反穿框、赴A途中偶见红球不会触发首次锁定。
         return
             "      <!-- 规划飞到气球打击区域" + zone + " -->\n"
             "      <PlanningControl goal=\"" + approach_pos + "\"/>\n"
             "      <!-- 转向朝向" + zone + "区气球(" + color + ") -->\n"
             "      <GoTo goal=\"" + goto_pos + "\" yaw=\"" + yaw + "\"/>\n"
             "      <!-- 跟踪并撞击气球 -->\n"
-            "      <ForceSuccess>\n"
-            "        <Timeout msec=\"50000\">\n"
+            "      <Timeout msec=\"" + std::to_string(strike_timeout_ms) + "\">\n"
             "          <Parallel success_count=\"1\" failure_count=\"1\">\n"
             "            <TargetTracker object_name=\"" + balloon_name + "\" "
             "confidence_threshold=\"0.8\" pixel_target=\"{balloon_pixel}\"/>\n"
@@ -359,10 +367,13 @@ std::string commandToXmlNode(const std::string& command) {
             "max_sprint_yaw_rate=\"" + vs_sprint_yaw + "\" approach_center_limit_px=\"" + vs_app_center + "\" "
             "sprint_center_limit_px=\"" + vs_sp_center + "\" brake_time=\"" + vs_brake + "\" "
             "min_world_z=\"" + vs_floor + "\" max_descent_from_entry=\"" + vs_descent + "\" "
-            "max_vertical_speed=\"" + vs_max_vz + "\"/>\n"
+            "max_vertical_speed=\"" + vs_max_vz + "\" "
+            "lock_yaw_after_first_detection=\"" + a_bool + "\" horizontal_only_alignment=\"" + a_bool + "\" "
+            "align_frames_required=\"" + vs_frames + "\" sprint_vertical_limit_px=\"" + vs_vertical_tol + "\" "
+            "initial_search_max_yaw_rad=\"" + vs_first_yaw_range + "\" data_timeout=\"" + vs_data_timeout + "\" "
+            "search_yaw_rate=\"" + vs_search_rate + "\"/>\n"
             "          </Parallel>\n"
-            "        </Timeout>\n"
-            "      </ForceSuccess>\n";
+            "      </Timeout>\n";
     }
     
     // ---- land ----

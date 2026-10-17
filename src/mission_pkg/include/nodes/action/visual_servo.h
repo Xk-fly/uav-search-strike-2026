@@ -47,6 +47,16 @@ private:
     geometry_msgs::Point climb_goal_;
     double climb_yaw_{0.0};
     int align_stable_frames_;
+    // A区可选模式：首次见球后，丢失时不转向、不盲目前进。
+    bool lock_yaw_after_first_detection_{false};
+    bool horizontal_only_alignment_{false};
+    bool target_seen_once_{false};
+    int align_frames_required_{5};
+    double sprint_vertical_limit_px_{55.0};
+    double initial_search_max_yaw_rad_{0.60};
+    double initial_yaw_{0.0};
+    double servo_start_stamp_{0.0};
+    double last_align_detection_stamp_{0.0};
     
     // 相机参数
     double img_cx_, img_cy_;
@@ -84,7 +94,6 @@ private:
     ros::Time prev_time_;
     
     // 常量
-    static constexpr int ALIGN_STABLE_FRAMES_REQUIRED = 5;
 
     // 辅助函数
     void updateTargetData();

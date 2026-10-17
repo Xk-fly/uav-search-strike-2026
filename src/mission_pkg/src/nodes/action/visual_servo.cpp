@@ -61,7 +61,12 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("data_timeout", 1.0, "数据超时 (s)"),
              InputPort<double>("approach_area_threshold", 0.08, "触发冲刺的面积占比"),
              InputPort<double>("center_tolerance", 0.15, "对齐判定区域比例"),
-             InputPort<double>("search_yaw_rate", 0.3, "搜索模式旋转速度 (rad/s)") };
+             InputPort<double>("search_yaw_rate", 0.3, "搜索模式旋转速度 (rad/s)"),
+             InputPort<bool>("lock_yaw_after_first_detection", false, "首次识别后丢失则固定航向悬停"),
+             InputPort<bool>("horizontal_only_alignment", false, "A区只需水平对准即可接近"),
+             InputPort<int>("align_frames_required", 5, "对准需要不同YOLO检测帧数"),
+             InputPort<double>("sprint_vertical_limit_px", 55.0, "冲刺安全纵向误差"),
+             InputPort<double>("initial_search_max_yaw_rad", 0.60, "首次见球前相对搜索偏航上限") };
 }
 
 NodeStatus VisualServo::onStart() {
@@ -103,6 +108,18 @@ NodeStatus VisualServo::onStart() {
     approach_area_threshold_ = getInput<double>("approach_area_threshold").value();
     center_tolerance_ = getInput<double>("center_tolerance").value();
     search_yaw_rate_ = getInput<double>("search_yaw_rate").value();
+    lock_yaw_after_first_detection_ = getInput<bool>("lock_yaw_after_first_detection").value();
+    horizontal_only_alignment_ = getInput<bool>("horizontal_only_alignment").value();
+    align_frames_required_ = getInput<int>("align_frames_required").value();
+    sprint_vertical_limit_px_ = getInput<double>("sprint_vertical_limit_px").value();
+    initial_search_max_yaw_rad_ = getInput<double>("initial_search_max_yaw_rad").value();
+    if (align_frames_required_ < 1 || align_frames_required_ > 20 ||
+        !std::isfinite(sprint_vertical_limit_px_) || sprint_vertical_limit_px_ < 0 ||
+        !std::isfinite(initial_search_max_yaw_rad_) ||
+        initial_search_max_yaw_rad_ < 0 || initial_search_max_yaw_rad_ > 3.14 ||
+        !std::isfinite(search_yaw_rate_) || search_yaw_rate_ < 0) {
+        throw BT::RuntimeError("VisualServo invalid reacquisition parameters");
+    }
     
     // 初始化状态机
     current_state_ = ALIGN;  // 先对准，再允许前进
@@ -120,7 +137,15 @@ NodeStatus VisualServo::onStart() {
     has_ever_received_data_ = false;
     max_area_ratio_ = 0.0;
     align_stable_frames_ = 0;
-    
+    last_align_detection_stamp_ = 0.0;
+    target_seen_once_ = false;
+    servo_start_stamp_ = ros::Time::now().toSec();
+    initial_yaw_ = PoseUtils::getYawFromQuat(fcu_odom_ptr->pose.pose.orientation);
+    if (!std::isfinite(initial_yaw_)) {
+        sendHoverCommand();
+        return NodeStatus::FAILURE;
+    }
+
     // 初始化微分状态
     prev_err_x_ = 0.0;
     prev_err_y_ = 0.0;
@@ -128,7 +153,9 @@ NodeStatus VisualServo::onStart() {
     
     updateTargetData();
     
-    ROS_INFO("[%s]: Visual Servo Started (VX+VZ+yaw_rate)", name().c_str());
+    ROS_INFO("[%s]: Visual Servo Started (VX+VZ+yaw_rate), yaw-lock=%d horizontal-only=%d align-frames=%d",
+             name().c_str(), static_cast<int>(lock_yaw_after_first_detection_),
+             static_cast<int>(horizontal_only_alignment_), align_frames_required_);
     ROS_INFO("[%s]: k_p_yaw_rate=%.4f k_d=%.4f max_rate=%.2f deadzone=%.1f", 
              name().c_str(), k_p_yaw_rate_, k_d_yaw_rate_, max_yaw_rate_, deadzone_yaw_);
     ROS_INFO("[%s]: forward_vel=%.2f sprint_vel=%.2f sprint_time=%.1f area_thresh=%.3f",
@@ -191,19 +218,46 @@ NodeStatus VisualServo::onRunning() {
         publishVelocityWithYawRate(0,0,0,0);
         return NodeStatus::RUNNING;
     }
-    if (isTargetLost()) {
+    // 明确空检测立即制动；若整个感知流中断，data_timeout到期制动。
+    // 只有正在冲刺且曾见到目标时的消失才可能是命中候选。
+    if (explicit_no_target_frame_ || isTargetLost()) {
         if (current_state_ == SPRINTING) {
-            // 掉帧超时同样终止冲刺，但不把通信异常当作命中。
-            ROS_WARN("[%s] SPRINT stopped after target timeout",name().c_str());
+            ROS_WARN("[%s] SPRINT stopped after target timeout/no-detection",name().c_str());
             current_state_=BRAKING;brake_start_time_=now;
             publishVelocityWithYawRate(0,0,0,0);
             return NodeStatus::RUNNING;
         }
         current_state_ = ALIGN;
         align_stable_frames_ = 0;
+        last_align_detection_stamp_ = 0.0;
         prev_err_x_ = prev_err_y_ = 0;
-        publishVelocityWithYawRate(0, 0, 0, search_yaw_rate_);
-        ROS_WARN_THROTTLE(1.0, "[%s] VisualServo lost target, searching with VX=0", name().c_str());
+        if (lock_yaw_after_first_detection_) {
+            if (target_seen_once_) {
+                // A区红车往复移动：首次看见之后失去视野，保持当前位置与航向。
+                // 绝不重新旋转或向原目标方向盲追。
+                sendHoverCommand();
+                ROS_INFO_THROTTLE(1.0, "[%s] A_ZONE_WAIT_TARGET: seen once, HOLD pose/yaw",
+                                  name().c_str());
+            } else {
+                // 首次见球前只做有限角度扫描，不允许原地连转多圈。
+                const double yaw = PoseUtils::getYawFromQuat(pose.orientation);
+                const double dyaw = std::atan2(std::sin(yaw - initial_yaw_),
+                                               std::cos(yaw - initial_yaw_));
+                if (std::isfinite(yaw) && search_yaw_rate_ > 0.0 &&
+                    dyaw < initial_search_max_yaw_rad_) {
+                    publishVelocityWithYawRate(0,0,0,search_yaw_rate_);
+                    ROS_INFO_THROTTLE(1.0, "[%s] A_ZONE_SEARCH_FIRST: yaw_offset=%.2f/%.2f",
+                                      name().c_str(),dyaw,initial_search_max_yaw_rad_);
+                } else {
+                    sendHoverCommand();
+                    ROS_INFO_THROTTLE(1.0, "[%s] A_ZONE_WAIT_FIRST: limited scan done, HOLD at lane",
+                                      name().c_str());
+                }
+            }
+        } else {
+            publishVelocityWithYawRate(0,0,0,search_yaw_rate_);
+            ROS_WARN_THROTTLE(1.0, "[%s] VisualServo lost target, searching with VX=0",name().c_str());
+        }
         return NodeStatus::RUNNING;
     }
 
@@ -214,24 +268,30 @@ NodeStatus VisualServo::onRunning() {
     max_area_ratio_ = std::max(max_area_ratio_, ratio);
     const double yaw_rate = computeYawRate(err_x, dt);
     // 保留小幅垂直对准；距离下限近时暂停所有升降像素伺服。
-    const double vz_raw=computeVz(err_y,dt);
-    const double vz=(z<floor_z_+0.14)?0.0:
-       std::clamp(vz_raw,-max_servo_vz_,max_servo_vz_);
+    const double vz_raw = horizontal_only_alignment_ ? 0.0 : computeVz(err_y,dt);
+    const double vz = horizontal_only_alignment_ || z<floor_z_+0.14 ? 0.0 :
+        std::clamp(vz_raw,-max_servo_vz_,max_servo_vz_);
 
     switch (current_state_) {
         case ALIGN: {
             // 水平偏差过大时绝不允许向前移动，只调yaw及少量高度。
             publishVelocityWithYawRate(0, 0, vz, yaw_rate);
             if (std::abs(err_x) <= sprint_center_limit_px_ &&
-                std::abs(err_y) <= 55.0) {
-                ++align_stable_frames_;
-                if (align_stable_frames_ >= ALIGN_STABLE_FRAMES_REQUIRED) {
+                (horizontal_only_alignment_ || std::abs(err_y) <= 55.0)) {
+                // 只统计不同的YOLO检测帧，而不是高频BT tick。
+                if (last_target_.timestamp > last_align_detection_stamp_ + 1e-4) {
+                    last_align_detection_stamp_ = last_target_.timestamp;
+                    ++align_stable_frames_;
+                }
+                if (align_stable_frames_ >= align_frames_required_) {
                     current_state_ = APPROACHING;
                     align_stable_frames_ = 0;
-                    ROS_INFO("[%s] ALIGN stable -> APPROACHING (x=%.1fpx)", name().c_str(), err_x);
+                    ROS_INFO("[%s] ALIGN stable -> APPROACHING (x=%.1fpx y=%.1fpx)",
+                             name().c_str(),err_x,err_y);
                 }
             } else {
                 align_stable_frames_ = 0;
+                last_align_detection_stamp_ = 0.0;
             }
             ROS_INFO_THROTTLE(1.0, "[%s] ALIGN x=%.1f y=%.1f stable=%d",
                               name().c_str(), err_x, err_y, align_stable_frames_);
@@ -255,7 +315,7 @@ NodeStatus VisualServo::onRunning() {
             // 只有目标较近且高度/水平方向对准时允许冲刺。
             if (ratio >= approach_area_threshold_ &&
                 std::abs(err_x) <= sprint_center_limit_px_ &&
-                std::abs(err_y) <= 55.0) {
+                std::abs(err_y) <= sprint_vertical_limit_px_) {
                 current_state_ = SPRINTING;
                 sprint_start_time_ = now;
                 strike_was_visible_ = target_visible_;
@@ -368,6 +428,13 @@ void VisualServo::updateTargetData() {
         (now_sec-current_target.timestamp)<=data_timeout_);
     std_msgs::Bool visible;visible.data=target_visible_;visible_pub_.publish(visible);
     if (valid) {
+        if (!target_seen_once_ && current_target.timestamp >= servo_start_stamp_) {
+            target_seen_once_ = true;
+            if (lock_yaw_after_first_detection_) {
+                ROS_INFO("[%s] A_ZONE_FIRST_TARGET_LOCKED: future loss will HOLD yaw",
+                         name().c_str());
+            }
+        }
         last_target_ = current_target;
         last_valid_detection_time_.fromSec(current_target.timestamp);
         has_ever_received_data_ = true;
