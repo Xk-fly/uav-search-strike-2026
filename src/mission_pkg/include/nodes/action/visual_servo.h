@@ -63,6 +63,12 @@ private:
     int sprint_confirmation_required_{5}, sprint_confirmation_streak_{0};
     double sprint_last_detection_stamp_{0.0};
     double min_tracking_after_lock_sec_{1.5};
+    // A区专用：从进入视觉伺服时的位置计算追车位移，限制近墙追击。
+    bool enforce_pursuit_range_{false};
+    double max_pursuit_distance_m_{3.35};
+    double sprint_buffer_m_{0.65};
+    geometry_msgs::Point pursuit_origin_;
+    bool pursuit_limit_reached_{false};
     
     // 相机参数
     double img_cx_, img_cy_;

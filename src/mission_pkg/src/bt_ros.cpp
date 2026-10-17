@@ -346,6 +346,9 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_lock_frames = std::to_string((int)getDbl(param_prefix + "/lock_confirmation_frames", a_zone ? 3 : 1));
         std::string vs_sprint_frames = std::to_string((int)getDbl(param_prefix + "/sprint_confirmation_frames", a_zone ? 5 : 1));
         std::string vs_min_track = std::to_string(getDbl(param_prefix + "/min_tracking_after_lock_sec", a_zone ? 1.5 : 0.0));
+        std::string vs_enforce_range = (a_zone ? "true" : "false");
+        std::string vs_pursuit_max = std::to_string(getDbl(param_prefix + "/max_pursuit_distance_m", 3.35));
+        std::string vs_sprint_buffer = std::to_string(getDbl(param_prefix + "/sprint_buffer_m", 0.65));
         int strike_timeout_ms = (int)getDbl(param_prefix + "/strike_timeout_ms", a_zone ? 90000.0 : 50000.0);
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
@@ -377,7 +380,10 @@ std::string commandToXmlNode(const std::string& command) {
             "initial_search_max_yaw_rad=\"" + vs_first_yaw_range + "\" data_timeout=\"" + vs_data_timeout + "\" "
             "search_yaw_rate=\"" + vs_search_rate + "\" "
             "lock_confirmation_frames=\"" + vs_lock_frames + "\" sprint_confirmation_frames=\"" + vs_sprint_frames + "\" "
-            "min_tracking_after_lock_sec=\"" + vs_min_track + "\"/>\n"
+            "min_tracking_after_lock_sec=\"" + vs_min_track + "\" "
+            "enforce_pursuit_range=\"" + vs_enforce_range + "\" "
+            "max_pursuit_distance_m=\"" + vs_pursuit_max + "\" "
+            "sprint_buffer_m=\"" + vs_sprint_buffer + "\"/>\n"
             "          </Parallel>\n"
             "      </Timeout>\n";
     }

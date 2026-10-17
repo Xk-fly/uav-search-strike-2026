@@ -69,7 +69,10 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("initial_search_max_yaw_rad", 0.60, "首次见球前相对搜索偏航上限"),
              InputPort<int>("lock_confirmation_frames", 3, "首次锁定需要连续有效帧"),
              InputPort<int>("sprint_confirmation_frames", 5, "冲刺需要连续满足门槛的有效帧"),
-             InputPort<double>("min_tracking_after_lock_sec", 1.5, "首次锁定后至少跟踪秒数") };
+             InputPort<double>("min_tracking_after_lock_sec", 1.5, "首次锁定后至少跟踪秒数"),
+             InputPort<bool>("enforce_pursuit_range", false, "开启A区追踪距离保护"),
+             InputPort<double>("max_pursuit_distance_m", 3.35, "从A区入口允许的最大水平位移"),
+             InputPort<double>("sprint_buffer_m", 0.65, "给冲刺+制动预留的安全距离") };
 }
 
 NodeStatus VisualServo::onStart() {
@@ -119,7 +122,13 @@ NodeStatus VisualServo::onStart() {
     lock_confirmation_required_ = getInput<int>("lock_confirmation_frames").value();
     sprint_confirmation_required_ = getInput<int>("sprint_confirmation_frames").value();
     min_tracking_after_lock_sec_ = getInput<double>("min_tracking_after_lock_sec").value();
-    if (lock_confirmation_required_ < 1 || lock_confirmation_required_ > 15 ||
+    enforce_pursuit_range_ = getInput<bool>("enforce_pursuit_range").value();
+    max_pursuit_distance_m_ = getInput<double>("max_pursuit_distance_m").value();
+    sprint_buffer_m_ = getInput<double>("sprint_buffer_m").value();
+    if (!std::isfinite(max_pursuit_distance_m_) || max_pursuit_distance_m_ <= 0.5 ||
+        !std::isfinite(sprint_buffer_m_) || sprint_buffer_m_ < 0 ||
+        sprint_buffer_m_ >= max_pursuit_distance_m_ ||
+        lock_confirmation_required_ < 1 || lock_confirmation_required_ > 15 ||
         sprint_confirmation_required_ < 1 || sprint_confirmation_required_ > 30 ||
         !std::isfinite(min_tracking_after_lock_sec_) ||
         min_tracking_after_lock_sec_ < 0 || min_tracking_after_lock_sec_ > 15 ||
@@ -139,6 +148,8 @@ NodeStatus VisualServo::onStart() {
     if (!std::isfinite(initial.x)||!std::isfinite(initial.y)||!std::isfinite(initial.z))
         throw BT::RuntimeError("VisualServo invalid start pose");
     floor_z_=std::max(min_world_z_,initial.z-max_descent_);
+    pursuit_origin_=initial;
+    pursuit_limit_reached_=false;
     climbing_to_safe_z_=false;
     target_visible_=false; strike_was_visible_=false; explicit_no_target_frame_=false;
     std_msgs::Bool flag;flag.data=false;visible_pub_.publish(flag);hit_pub_.publish(flag);
@@ -223,6 +234,22 @@ NodeStatus VisualServo::onRunning() {
         return NodeStatus::RUNNING;
     }
 
+    // 单独限制A区往返小车跟踪路程：离开预定入口点超过距离后固定XY/Yaw悬停。
+    // 不因目标消失而误认为击中，也不再加速追到边界墙。
+    const double pursuit_distance = std::hypot(
+        pose.position.x - pursuit_origin_.x, pose.position.y - pursuit_origin_.y);
+    if (enforce_pursuit_range_ && current_state_ != SPRINTING &&
+        pursuit_distance >= max_pursuit_distance_m_) {
+        if (!pursuit_limit_reached_)
+            ROS_WARN("[%s] A_ZONE_PURSUIT_LIMIT: distance=%.2fm max=%.2fm, HOLD",
+                     name().c_str(), pursuit_distance, max_pursuit_distance_m_);
+        pursuit_limit_reached_=true;
+        current_state_=ALIGN;
+        align_stable_frames_=0;
+        sprint_confirmation_streak_=0;
+        sendHoverCommand();
+        return NodeStatus::RUNNING;
+    }
     // 按用户要求：冲刺开始并看见红球后，第一帧未见该颜色即触发停止。
     if(current_state_==SPRINTING && strike_was_visible_ && explicit_no_target_frame_){
         std_msgs::Bool hit;hit.data=true;hit_pub_.publish(hit);
@@ -331,11 +358,19 @@ NodeStatus VisualServo::onRunning() {
             }
             const double align_ratio = std::clamp(
                 1.0 - std::abs(err_x) / approach_center_limit_px_, 0.0, 1.0);
-            const double vx = forward_velocity_ * align_ratio;
-            publishVelocityWithYawRate(vx, 0, vz, yaw_rate);
+            const bool preserve_sprint_space = enforce_pursuit_range_ &&
+                pursuit_distance + sprint_buffer_m_ >= max_pursuit_distance_m_;
+            const double vx = preserve_sprint_space ? 0.0 : forward_velocity_ * align_ratio;
+            publishVelocityWithYawRate(vx, 0, vz,
+                                       preserve_sprint_space ? 0.0 : yaw_rate);
+            if (preserve_sprint_space)
+                ROS_WARN_THROTTLE(1.0, "[%s] A_ZONE_PRESERVE_SPRINT_SPACE dist=%.2fm reserve=%.2fm; stop forward",
+                                  name().c_str(), pursuit_distance, sprint_buffer_m_);
 
             // 追踪时间+连续有效帧双重门槛：避免红车短暂经过就仓促撞击。
             const bool can_sprint = ratio >= approach_area_threshold_ &&
+                (!enforce_pursuit_range_ ||
+                 pursuit_distance + sprint_buffer_m_ < max_pursuit_distance_m_) &&
                 std::abs(err_x) <= sprint_center_limit_px_ &&
                 std::abs(err_y) <= sprint_vertical_limit_px_ &&
                 (!lock_yaw_after_first_detection_ ||

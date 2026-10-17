@@ -95,11 +95,15 @@
     <!-- yaw:  到达位置时的机头朝向 (rad)                -->
     <!-- ============================================ -->
     <!-- A区 (红色气球) -->
-    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;0.90" type="str"/>
-    <param name="balloon_zone_A/goal"         value="5.3;1.0;0.90" type="str"/>
+    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;0.75" type="str"/>
+    <param name="balloon_zone_A/goal"         value="5.3;1.0;0.75" type="str"/>
     <param name="balloon_zone_A/yaw"          value="1.5708"        type="double"/>
     <!-- A区动态跑道：仅到位后首见红球才锁定航向，丢失时悬停等待重新出现 -->
-    <param name="balloon_zone_A/approach_area_threshold" value="0.05" type="double"/>
+    <param name="balloon_zone_A/approach_area_threshold" value="0.025" type="double"/>
+    <!-- 0.75m为首轮试验高度，高于官方B/C区的0.70m。下限经实际安全净空核验后才能进一步放宽。 -->
+    <param name="balloon_zone_A/enforce_pursuit_range" value="true" type="bool"/>
+    <param name="balloon_zone_A/max_pursuit_distance_m" value="3.35" type="double"/>
+    <param name="balloon_zone_A/sprint_buffer_m" value="0.65" type="double"/>
     <param name="balloon_zone_A/approach_center_limit_px" value="65.0" type="double"/>
     <param name="balloon_zone_A/sprint_center_limit_px" value="40.0" type="double"/>
     <param name="balloon_zone_A/align_frames_required" value="3" type="int"/>
@@ -108,7 +112,7 @@
     <param name="balloon_zone_A/lock_confirmation_frames" value="3" type="int"/>
     <param name="balloon_zone_A/sprint_confirmation_frames" value="5" type="int"/>
     <param name="balloon_zone_A/min_tracking_after_lock_sec" value="1.5" type="double"/>
-    <param name="balloon_zone_A/min_world_z" value="0.72" type="double"/>
+    <param name="balloon_zone_A/min_world_z" value="0.60" type="double"/>
     <param name="balloon_zone_A/search_yaw_rate" value="0.12" type="double"/>
     <param name="balloon_zone_A/data_timeout" value="0.40" type="double"/>
     <param name="balloon_zone_A/strike_timeout_ms" value="90000" type="int"/>

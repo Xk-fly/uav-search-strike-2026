@@ -37,3 +37,13 @@
 - 下一轮优先候选：降低A区高度（0.70~0.75m需确认机体和小车净空），同步校验/调整min_world_z下限；其次重评面积触发条件，增加目标接近验证与区域距离边界，避免盲追。
 - 本次bag来源原日志 `/tmp/mission_logs/llm_mission__2026-10-17-17-27-29.bag`；仓库后续已把默认录制目录改为 `~/uav_demo_bags`（`sim_env_start.sh`自动mkdir；仍需GPUFree端git pull才生效）。
 - `/objects_down`本次未录到有效消息，下视YOLO仍默认关闭，截图能看到下视红球但尚无下视自动验证结果。不能以本次“悬停后红球又出现”解释为撞击后新一轮追球：实际一直处于接近/丢失/重捕状态。
+
+
+## 2026-10-17 晚间：官方基线高度核实 + A区试验高度/边界保护
+- 核对 `official-demo-baseline` (`2c0fe57`): `src/mission_pkg/launch/llm_mission.launch` 给A区红球靠近点为 **1.00m**，B/C区均 **0.70m**；`config/hit_balloon.xml` 单独撞球Demo起始高度为 **1.00m**；`visual_servo.cpp` 原始控制 **VX+VZ+yaw_rate**，会边跟踪边垂直调整。因此这些数值是**初始高度**，不能据此断言最终机体撞球高度；用户目测原版撞到球但缺少原版命中轨迹bag。
+- 本轮候选A区改为 **0.75m**（比官方B/C区0.70m高5cm，且不是官方A区的原始数值）；**A区垂直伺服仍关闭**，保持固定高度便于对照。
+- A区 `min_world_z` 从0.72变成 **0.60m**：这是仿真试验的高度保护阈值，**不等于经实体安全认证的离地间隙**。入场前确认机体实际底部/车顶间隙。
+- 上一轮bag最大红球bbox面积仅3.564%，低于原5%。A区候选面积阈值设 **2.5%**，保留5帧稳定冲刺门槛、1.5s最短锁定跟踪和水平/垂直容差。
+- 新增 **A区从视觉伺服开始位置出发最大水平位移3.35m**，冲刺/制动预留0.65m。到边界时停止前进并悬停，预留冲刺距离不足时先禁止冲刺；这是粗略实验约束，无法替代场景深度地图/墙碰撞验证。
+- 不修改B/C区、已验证的穿框/反穿框、ArUco和StableHover/Ego正常返航链路。
+- 仍需GPUFree本地构建和实测验收。优先记录 `APPROACH -> SPRINT`、`SPRINT -> BRAKING`、`A_ZONE_PURSUIT_LIMIT`、`A_ZONE_PRESERVE_SPRINT_SPACE`；保存rosbag到 `~/uav_demo_bags/`。
