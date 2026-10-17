@@ -28,13 +28,20 @@ NodeStatus TargetTracker::onStart() {
     filter_window_size = window_res.value();
 
     pixel_history.clear();
-    
+    activation_time_ = ros::Time::now();
+
     ROS_INFO("[%s]: Pixel tracking filter window: %d", name().c_str(), filter_window_size);
     
     return base_status;
 }
 
 NodeStatus TargetTracker::handleDetectedObject(const common_msgs::Obj& obj) {
+    // 只允许A区启动以后真正采集的前视帧，防止赴A途中缓存误触发。
+    const ros::Time now = ros::Time::now();
+    if (obj.header.stamp.isZero() || obj.header.stamp < activation_time_ ||
+        (now - obj.header.stamp).toSec() < -0.20 ||
+        (now - obj.header.stamp).toSec() > 1.5)
+        return handleNoDetection();
     // 直接提取像素坐标
     double pixel_width = obj.right_bottom_x - obj.left_top_x;
     double pixel_height = obj.right_bottom_y - obj.left_top_y;

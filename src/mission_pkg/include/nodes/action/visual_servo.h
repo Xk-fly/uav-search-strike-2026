@@ -57,6 +57,12 @@ private:
     double initial_yaw_{0.0};
     double servo_start_stamp_{0.0};
     double last_align_detection_stamp_{0.0};
+    int lock_confirmation_required_{3}, lock_confirmation_streak_{0};
+    double lock_last_detection_stamp_{0.0};
+    ros::Time lock_confirmed_at_;
+    int sprint_confirmation_required_{5}, sprint_confirmation_streak_{0};
+    double sprint_last_detection_stamp_{0.0};
+    double min_tracking_after_lock_sec_{1.5};
     
     // 相机参数
     double img_cx_, img_cy_;

@@ -30,6 +30,7 @@ private:
     // 像素坐标平滑（简单移动平均）
     std::deque<PixelTarget> pixel_history;
     int filter_window_size;
+    ros::Time activation_time_;
     
     PixelTarget getSmoothedPixel();
 };
