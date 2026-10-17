@@ -69,22 +69,28 @@ NodeStatus StableHover::onRunning() {
     if (!odomOk(now)) return stopWithFailure("odom stale/non-finite");
     if ((now-start_time_).toSec()>timeout_) return stopWithFailure("braking timeout");
 
-    // 超过0.4s没有新真实位置，不能沿用旧速度宣称已经悬停。
-    if ((now-last_odom_stamp_).toSec()>0.40) {
+    // 先看当前里程计是否有新数据，再判断缓存采样是否超时。
+    // 旧版先用last_odom_stamp_作超时门槛并直接return；
+    // 如曾经超过0.4s，后来新数据即使恢复也永远无法更新last_odom_stamp_。
+    const ros::Time current_odom_stamp=fcu_odom_ptr->header.stamp;
+    const bool has_new_odom=current_odom_stamp>last_odom_stamp_;
+    const double sample_age=(now-last_odom_stamp_).toSec();
+    if (!has_new_odom && sample_age>0.40) {
         speed_ready_=false;
         stable_since_=ros::Time(0);
         phase_=Phase::BRAKE;
         zeroVelocity();
-        ROS_WARN_THROTTLE(1.0,"[%s] StableHover waiting for fresh odom samples",name().c_str());
+        ROS_WARN_THROTTLE(1.0,"[%s] StableHover waiting fresh odom: sample_age=%.2fs latest_header_age=%.2fs",
+                          name().c_str(),sample_age,(now-current_odom_stamp).toSec());
         return NodeStatus::RUNNING;
     }
     const auto pos=fcu_odom_ptr->pose.pose.position;
     const double dt=(now-sample_time_).toSec();
-    if (dt>=sample_interval_ && fcu_odom_ptr->header.stamp>last_odom_stamp_) {
+    if (dt>=sample_interval_ && has_new_odom) {
         speed_estimate_=d3(pos,sample_pos_)/dt;
         sample_pos_=pos;
         sample_time_=now;
-        last_odom_stamp_=fcu_odom_ptr->header.stamp;
+        last_odom_stamp_=current_odom_stamp;
         speed_ready_=true;
     }
 

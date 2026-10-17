@@ -55,3 +55,13 @@
 - 检查结束发布 `/balloon_attack/postcheck_result`：`RED_STILL_VISIBLE`（至少2次连续有效检测）、`RED_NOT_OBSERVED`（有检测帧但未见）、`INCONCLUSIVE_NO_DATA`（无有效图像检测帧）。**下视未观察到红球≠官方得分/气球已破**；任何观测结论均继续原Ego安全返航。
 - 关闭此可选链路：将launch参数 `balloon_zone_A/postcheck_enabled` 设为false，保留原有 `hit_balloon→land` 路线。
 - 本轮只做了GitHub提交及代码检查，运行编译、ROS bag链路及爬升净空需要GPUFree实测。
+
+## 2026-10-17 19:31 bag 精确分析与 0.55m 测试设置
+- 数据源：用户上传 `llm_mission__2026-10-17-19-31-27.bag`，约36.26MB，rosbag2.0无压缩，包内总466.77s。任务开始录制后99.81s，A区视觉伺服启动215.03s、3帧首锁222.11s、251.04s进入SPRINT、251.65s进入BRAKING、252.16s完成制动。
+- `/rflysim/uav1/local/odom`：A区持续阶段平均高度0.762m（最小0.725、最大0.802），**冲刺瞬间Z约0.776m**，未看到`VisualServo floor protection`日志，因此不是0.75m高度保护引发的主动回升。
+- 冲刺日志`APPROACH -> SPRINT area=0.025 err_x=-15.1 err_y=122.7 stable=5`，水平已大致居中，纵向仍明显偏下。冲刺发出0.90m/s、持续约0.61s；目标是否物理碰撞未有比赛官方得分信息，截图目视从球上方掠过。
+- **新故障**：`StableHover`在252.16s启动后始终报告`waiting for fresh odom samples`，261.16s`FAILURE braking timeout`，`/mission_result`只有`FAILURE`。因此自动爬升/下视3秒观测/Ego返航都未执行；bag无`/objects_down`观测消息。
+- 根因代码路径：`StableHover::onRunning()`旧版在检查当前里程计头时间戳有无前进**之前**，先用上次存储的last_odom_stamp_判断0.4s超时并直接return，导致超时后即使有新消息也无法更新sample stamp，进入不可恢复等待。bag中`/rflysim/uav1/local/odom`在252~261s持续到达且时间戳前进，支持此代码路径。已将顺序修复，保留当前odom时效、速度差分、制动和稳定阈值门控；仍须GPUFree编译验证。
+- 用户指定下轮直接测试A区固定目标高度**0.55m**（原0.75m），同步将A区`min_world_z=0.43m`；当前默认`max_descent_from_entry=0.15`，预计floor=max(0.43,0.55-0.15)=0.43m，保护触发约floor+0.04=0.47m，触发后目标爬升至floor+0.12=0.55m。此值仅是**仿真试验限位**，在机身/车体几何不明确时不得将其视为已认证防撞净空。
+- A区`horizontal_only_alignment=true`，`VisualServo`仍在控制vx+yaw但**不主动调节VZ**；先单独验证改变固定航点高度的影响，避免与重启垂直视觉伺服混合改变因素。复测前请确保0.55m沿途以及小车车顶的净空，安全不符应取消本轮低高度测试。
+- 其他A区触发/保护（面积2.5%、连续3帧锁定、连续5帧冲刺、3.35m追踪距离、0.65m冲刺余量）保持不变；主备份分支不动。
