@@ -278,12 +278,13 @@ std::string commandToXmlNode(const std::string& command) {
     // ---- return_cross_frame: 动态返回，Ego单次反穿框后继续1m ----
     if (cmd == "return_cross_frame") {
         const double yaw_rate = getDbl("return_cross_frame/yaw_rate", 0.35);
-        const double exit_distance = getDbl("return_cross_frame/exit_distance", 1.0);
+        const double exit_distance = getDbl("return_cross_frame/exit_distance", 1.5);
+        const double approach_extra = getDbl("return_cross_frame/approach_extra_distance", 0.5);
         return
             "      <!-- 原地朝向首次穿框后的记录点 -->\n"
             "      <PrecisionMove face_goal=\"{planning_end_pos}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n"
             "      <!-- 使用完整记录的XYZ平滑斜向返回 -->\n"
-            "      <PrecisionMove goal=\"{planning_end_pos}\"/>\n"
+            "      <PrecisionMove goal=\"{planning_end_pos}\" away_from=\"{frame_center}\" extend_distance=\"" + std::to_string(approach_extra) + "\"/>\n"
             "      <!-- 新增：穿框前回到框心航向，让前视深度与框口同向 -->\n"
             "      <PrecisionMove face_goal=\"{frame_center}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n"
             "      <!-- Ego一次反穿框并沿穿框方向继续1m；不拆分两次0.5m -->\n"
@@ -342,6 +343,9 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_first_yaw_range = std::to_string(getDbl(param_prefix + "/initial_search_max_yaw_rad", 0.60));
         std::string vs_data_timeout = std::to_string(getDbl(param_prefix + "/data_timeout", a_zone ? 0.40 : 1.0));
         std::string vs_search_rate = std::to_string(getDbl(param_prefix + "/search_yaw_rate", a_zone ? 0.12 : 0.3));
+        std::string vs_lock_frames = std::to_string((int)getDbl(param_prefix + "/lock_confirmation_frames", a_zone ? 3 : 1));
+        std::string vs_sprint_frames = std::to_string((int)getDbl(param_prefix + "/sprint_confirmation_frames", a_zone ? 5 : 1));
+        std::string vs_min_track = std::to_string(getDbl(param_prefix + "/min_tracking_after_lock_sec", a_zone ? 1.5 : 0.0));
         int strike_timeout_ms = (int)getDbl(param_prefix + "/strike_timeout_ms", a_zone ? 90000.0 : 50000.0);
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
@@ -371,7 +375,9 @@ std::string commandToXmlNode(const std::string& command) {
             "lock_yaw_after_first_detection=\"" + a_bool + "\" horizontal_only_alignment=\"" + a_bool + "\" "
             "align_frames_required=\"" + vs_frames + "\" sprint_vertical_limit_px=\"" + vs_vertical_tol + "\" "
             "initial_search_max_yaw_rad=\"" + vs_first_yaw_range + "\" data_timeout=\"" + vs_data_timeout + "\" "
-            "search_yaw_rate=\"" + vs_search_rate + "\"/>\n"
+            "search_yaw_rate=\"" + vs_search_rate + "\" "
+            "lock_confirmation_frames=\"" + vs_lock_frames + "\" sprint_confirmation_frames=\"" + vs_sprint_frames + "\" "
+            "min_tracking_after_lock_sec=\"" + vs_min_track + "\"/>\n"
             "          </Parallel>\n"
             "      </Timeout>\n";
     }

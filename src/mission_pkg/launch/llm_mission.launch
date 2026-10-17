@@ -65,7 +65,8 @@
 
     <!-- 返程动态朝向与单次反穿框额外前进1m -->
     <param name="return_cross_frame/yaw_rate" value="0.35" type="double"/>
-    <param name="return_cross_frame/exit_distance" value="1.0" type="double"/>
+    <param name="return_cross_frame/exit_distance" value="1.5" type="double"/>
+    <param name="return_cross_frame/approach_extra_distance" value="0.5" type="double"/>
     <!-- 返回穿越方框 -->
 
     <!-- 降落 -->
@@ -94,8 +95,8 @@
     <!-- yaw:  到达位置时的机头朝向 (rad)                -->
     <!-- ============================================ -->
     <!-- A区 (红色气球) -->
-    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;1.00" type="str"/>
-    <param name="balloon_zone_A/goal"         value="5.3;1.0;1.00" type="str"/>
+    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;0.90" type="str"/>
+    <param name="balloon_zone_A/goal"         value="5.3;1.0;0.90" type="str"/>
     <param name="balloon_zone_A/yaw"          value="1.5708"        type="double"/>
     <!-- A区动态跑道：仅到位后首见红球才锁定航向，丢失时悬停等待重新出现 -->
     <param name="balloon_zone_A/approach_area_threshold" value="0.05" type="double"/>
@@ -103,7 +104,11 @@
     <param name="balloon_zone_A/sprint_center_limit_px" value="40.0" type="double"/>
     <param name="balloon_zone_A/align_frames_required" value="3" type="int"/>
     <param name="balloon_zone_A/sprint_vertical_limit_px" value="130.0" type="double"/>
-    <param name="balloon_zone_A/initial_search_max_yaw_rad" value="0.60" type="double"/>
+    <param name="balloon_zone_A/initial_search_max_yaw_rad" value="1.20" type="double"/>
+    <param name="balloon_zone_A/lock_confirmation_frames" value="3" type="int"/>
+    <param name="balloon_zone_A/sprint_confirmation_frames" value="5" type="int"/>
+    <param name="balloon_zone_A/min_tracking_after_lock_sec" value="1.5" type="double"/>
+    <param name="balloon_zone_A/min_world_z" value="0.72" type="double"/>
     <param name="balloon_zone_A/search_yaw_rate" value="0.12" type="double"/>
     <param name="balloon_zone_A/data_timeout" value="0.40" type="double"/>
     <param name="balloon_zone_A/strike_timeout_ms" value="90000" type="int"/>
@@ -141,7 +146,8 @@
     </node>
 
     <!-- 日志录制（可选，默认关闭） -->
-    <arg name="enable_logging" default="false"/>
+    <arg name="enable_logging" default="true"/>
+    <arg name="log_dir" default="/tmp/mission_logs"/>
     
     <node if="$(arg enable_logging)" 
           pkg="rosbag" 
@@ -150,10 +156,17 @@
           args="/mavros/local_position/odom 
                 /mavros/state 
                 /mavros/setpoint_raw/local 
-                /objects 
+                /objects
+                /objects_down
+                /rflysim/uav1/local/odom
+                /balloon_attack/target_visible
+                /balloon_attack/hit_candidate
+                /balloon_attack/postcheck_result
+                /aruco/detected_id
+                /rosout
                 /planning/pos_cmd 
                 /move_base_simple/goal 
                 /mission_command 
                 /mission_result 
-                -o $(find mission_pkg)/../../logs/llm_mission_"/>
+                -o $(arg log_dir)/llm_mission_"/>
 </launch>

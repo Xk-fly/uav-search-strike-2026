@@ -41,6 +41,8 @@ PortsList PrecisionMove::providedPorts() {
         InputPort<Position3D>("goal", "可选终点坐标 x;y;z"),
         InputPort<double>("height", "可选世界绝对高度(m)，保持当前XY"),
         InputPort<Position3D>("face_goal", "不移动XYZ，仅朝向目标点"),
+        InputPort<Position3D>("away_from", "参考点，目标点沿离开它的方向延长"),
+        InputPort<double>("extend_distance", 0.0, "水平向外延长距离m"),
         InputPort<double>("yaw_rate", "可选偏航速率限幅rad/s"),
         InputPort<double>("yaw", "可选终点绝对偏航(rad)"),
         InputPort<int>("frame", 0, "0=world ENU, 1=相对起始机体坐标")
@@ -158,6 +160,22 @@ NodeStatus PrecisionMove::onStart() {
     } else if (height_res) {
         if (frame != 0) return failSafe("height requires world frame");
         target_pos_.z = height_res.value();
+    }
+    // 动态反穿准备点：从框中心沿原穿越方向向外延长0.5m。
+    auto away_res = getInput<Position3D>("away_from");
+    const double extra = getInput<double>("extend_distance").value();
+    if (away_res) {
+        if (!goal_res || frame != 0 || !std::isfinite(extra) || extra < 0 || extra > 1.0)
+            return failSafe("invalid goal extension");
+        const Position3D from = away_res.value();
+        const double dx = target_pos_.x - from.x, dy = target_pos_.y - from.y;
+        const double d = std::hypot(dx, dy);
+        if (!std::isfinite(d) || d < 0.30) return failSafe("invalid extension baseline");
+        target_pos_.x += extra * dx / d;
+        target_pos_.y += extra * dy / d;
+        ROS_INFO("[%s] PrecisionMove farther from frame by %.2fm", name().c_str(), extra);
+    } else if (std::abs(extra) > 1e-6) {
+        return failSafe("extend_distance requires away_from");
     }
 
 
