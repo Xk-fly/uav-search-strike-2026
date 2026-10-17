@@ -350,13 +350,17 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_pursuit_max = std::to_string(getDbl(param_prefix + "/max_pursuit_distance_m", 3.35));
         std::string vs_sprint_buffer = std::to_string(getDbl(param_prefix + "/sprint_buffer_m", 0.65));
         int strike_timeout_ms = (int)getDbl(param_prefix + "/strike_timeout_ms", a_zone ? 90000.0 : 50000.0);
+        bool postcheck_enabled = a_zone;
+        nh.param<bool>(param_prefix + "/postcheck_enabled",postcheck_enabled,a_zone);
+        const double postcheck_height=getDbl(param_prefix + "/postcheck_height",1.25);
+        const double postcheck_seconds=getDbl(param_prefix + "/postcheck_seconds",3.0);
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
         
         // 仅在Ego到达A区并完成GoTo定向后，才启动TargetTracker和VisualServo；
         // 反穿框、赴A途中偶见红球不会触发首次锁定。
-        return
+        std::string xml =
             "      <!-- 规划飞到气球打击区域" + zone + " -->\n"
             "      <PlanningControl goal=\"" + approach_pos + "\"/>\n"
             "      <!-- 转向朝向" + zone + "区气球(" + color + ") -->\n"
@@ -386,6 +390,15 @@ std::string commandToXmlNode(const std::string& command) {
             "sprint_buffer_m=\"" + vs_sprint_buffer + "\"/>\n"
             "          </Parallel>\n"
             "      </Timeout>\n";
+        if (postcheck_enabled) {
+            // 正常冲刺制动后：确认悬停、爬升、下视独立观察3秒；结果只做反馈。
+            xml +=
+                "      <StableHover speed_threshold=\"0.16\" settle_time=\"0.90\" timeout=\"9.0\"/>\n"
+                "      <PrecisionMove height=\"" + std::to_string(postcheck_height) + "\"/>\n"
+                "      <BalloonObserve mode=\"down\" object_name=\"" + balloon_name + "\" confidence_threshold=\"0.75\" "
+                "timeout=\"" + std::to_string(postcheck_seconds) + "\" observe_full_duration=\"true\"/>\n";
+        }
+        return xml;
     }
     
     // ---- land ----

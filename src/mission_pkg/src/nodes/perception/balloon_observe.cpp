@@ -12,6 +12,7 @@ double gap(const geometry_msgs::Point&a,const geometry_msgs::Point&b) {
 BalloonObserve::BalloonObserve(const std::string& name,const NodeConfig& config)
  : DroneActionNode(name,config) {
   status_pub_=mct->getROSHandle()->advertise<std_msgs::String>("/balloon_search/status",20);
+  postcheck_pub_=mct->getROSHandle()->advertise<std_msgs::String>("/balloon_attack/postcheck_result",10,true);
 }
 PortsList BalloonObserve::providedPorts() {
   return {InputPort<std::string>("mode","front","front旋转扫描/down下视观察"),
@@ -19,7 +20,8 @@ PortsList BalloonObserve::providedPorts() {
           InputPort<double>("confidence_threshold",0.75,"置信度"),
           InputPort<double>("scan_yaw_rate",0.30,"扫描最大偏航速率rad/s"),
           InputPort<double>("timeout",26.0,"最长观测秒数"),
-          InputPort<double>("max_drift",0.50,"原地旋转最大位移m")};
+          InputPort<double>("max_drift",0.50,"原地旋转最大位移m"),
+          InputPort<bool>("observe_full_duration",false,"下视观察完整时长并记录反馈")};
 }
 void BalloonObserve::status(const std::string& tag) {
   std_msgs::String msg; msg.data=mode_+":"+target_+":"+tag; status_pub_.publish(msg);
@@ -43,6 +45,7 @@ NodeStatus BalloonObserve::onStart() {
   yaw_rate_=getInput<double>("scan_yaw_rate").value();
   timeout_=getInput<double>("timeout").value();
   max_drift_=getInput<double>("max_drift").value();
+  observe_full_duration_=getInput<bool>("observe_full_duration").value();
   if(!(std::isfinite(confidence_)&&confidence_>0&&confidence_<=1&&
        std::isfinite(yaw_rate_)&&yaw_rate_>0&&std::isfinite(timeout_)&&timeout_>0&&
        std::isfinite(max_drift_)&&max_drift_>0))
@@ -53,6 +56,9 @@ NodeStatus BalloonObserve::onStart() {
   starting_yaw_=PoseUtils::getYawFromQuat(fcu_odom_ptr->pose.pose.orientation);
   if(!std::isfinite(starting_yaw_))throw BT::RuntimeError("BalloonObserve invalid yaw");
   start_=ros::Time::now(); last_hit_=ros::Time(0);hits_=0;down_on_=false;
+  observed_frames_=0;confirmed_seen_=false;
+  if(observe_full_duration_ && mode_!="down")
+    throw BT::RuntimeError("full-duration observation only valid for down camera");
   auto nh=mct->getROSHandle();
   sub_=nh->subscribe(mode_=="front"?"/objects":"/objects_down",10,&BalloonObserve::objectsCallback,this);
   {std::lock_guard<std::mutex> lock(mutex_);rx_seq_=consumed_seq_=0;objects_.objects.clear();}
@@ -86,16 +92,21 @@ NodeStatus BalloonObserve::onRunning() {
   common_msgs::Objects frame;bool fresh=false;
   {std::lock_guard<std::mutex> lock(mutex_);
    if(rx_seq_!=consumed_seq_){frame=objects_;consumed_seq_=rx_seq_;fresh=true;}}
-  if(fresh) {
+  if(fresh && frame.header.stamp>=start_ &&
+     (now-frame.header.stamp).toSec()<=1.0) {
     bool seen=false;
     const bool right_source=(mode_=="front")?
       (frame.source_id==0||frame.source_id==1):(frame.source_id==2);
     if(right_source)for(const auto&o:frame.objects) {
       if(o.class_name==target_ && o.score>=confidence_){seen=true;break;}
     }
+    ++observed_frames_;
     if(seen){++hits_;last_hit_=now;}else hits_=0;
     if(hits_>=2) {
-      sendHoverCommand();status("FOUND");stopDown();return NodeStatus::SUCCESS;
+      confirmed_seen_=true;
+      if(!observe_full_duration_) {
+        sendHoverCommand();status("FOUND");stopDown();return NodeStatus::SUCCESS;
+      }
     }
   }
   if(!last_hit_.isZero()&&(now-last_hit_).toSec()>0.8)hits_=0;
@@ -104,7 +115,18 @@ NodeStatus BalloonObserve::onRunning() {
       sendHoverCommand();status("NOT_FOUND_RAISE");return NodeStatus::FAILURE;
     }
   } else if(elapsed>=timeout_) {
-    sendHoverCommand();status("NOT_FOUND_CONTINUE_LEGACY");
+    sendHoverCommand();
+    if(observe_full_duration_) {
+      const char* verdict=observed_frames_==0 ? "INCONCLUSIVE_NO_DATA" :
+                          confirmed_seen_ ? "RED_STILL_VISIBLE" : "RED_NOT_OBSERVED";
+      std_msgs::String result;
+      result.data=std::string(verdict)+" frames="+std::to_string(observed_frames_)+
+                  " seen_confirmed="+std::to_string(static_cast<int>(confirmed_seen_));
+      postcheck_pub_.publish(result);
+      ROS_WARN("[%s] A_ZONE_POSTCHECK %s (not official strike confirmation)",
+               name().c_str(),result.data.c_str());
+      status(std::string("POSTCHECK_")+verdict);
+    } else status("NOT_FOUND_CONTINUE_LEGACY");
     stopDown();return NodeStatus::SUCCESS;
   }
   ROS_INFO_THROTTLE(2.0,"[%s] BalloonObserve %s %s hits=%d elapsed=%.1f",

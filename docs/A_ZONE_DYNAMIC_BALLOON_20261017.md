@@ -47,3 +47,11 @@
 - 新增 **A区从视觉伺服开始位置出发最大水平位移3.35m**，冲刺/制动预留0.65m。到边界时停止前进并悬停，预留冲刺距离不足时先禁止冲刺；这是粗略实验约束，无法替代场景深度地图/墙碰撞验证。
 - 不修改B/C区、已验证的穿框/反穿框、ArUco和StableHover/Ego正常返航链路。
 - 仍需GPUFree本地构建和实测验收。优先记录 `APPROACH -> SPRINT`、`SPRINT -> BRAKING`、`A_ZONE_PURSUIT_LIMIT`、`A_ZONE_PRESERVE_SPRINT_SPACE`；保存rosbag到 `~/uav_demo_bags/`。
+
+## A区撞击后下视反馈（可选且默认开启，仅A区）
+- 动态行为树在VisualServo成功（完成冲刺尝试＋BRAKING）后依次执行 `StableHover`（真实速度<0.16m/s稳定0.9s）、`PrecisionMove height=1.25`（单独原地爬升）、`BalloonObserve mode=down timeout=3.0 observe_full_duration=true`。
+- 只有真正完成冲刺尝试才执行此检查，前段失败仍不会假成功或自行进入降落流程。
+- 使用已存在的下视识别节点，检查时打开`/detect_ctrl_down`，结束后关闭；全过程不允许下视检测写飞行速度。
+- 检查结束发布 `/balloon_attack/postcheck_result`：`RED_STILL_VISIBLE`（至少2次连续有效检测）、`RED_NOT_OBSERVED`（有检测帧但未见）、`INCONCLUSIVE_NO_DATA`（无有效图像检测帧）。**下视未观察到红球≠官方得分/气球已破**；任何观测结论均继续原Ego安全返航。
+- 关闭此可选链路：将launch参数 `balloon_zone_A/postcheck_enabled` 设为false，保留原有 `hit_balloon→land` 路线。
+- 本轮只做了GitHub提交及代码检查，运行编译、ROS bag链路及爬升净空需要GPUFree实测。

@@ -28,6 +28,10 @@ private:
   double starting_yaw_{0};
   double confidence_{0.75}, yaw_rate_{0.30}, timeout_{26.0}, max_drift_{0.5};
   int hits_{0};
+  int observed_frames_{0};
+  bool confirmed_seen_{false};
+  bool observe_full_duration_{false};
+  ros::Publisher postcheck_pub_;
   bool down_on_{false};
   ros::Time start_, last_hit_;
 };

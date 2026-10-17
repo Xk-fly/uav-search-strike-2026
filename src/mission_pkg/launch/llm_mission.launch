@@ -104,6 +104,9 @@
     <param name="balloon_zone_A/enforce_pursuit_range" value="true" type="bool"/>
     <param name="balloon_zone_A/max_pursuit_distance_m" value="3.35" type="double"/>
     <param name="balloon_zone_A/sprint_buffer_m" value="0.65" type="double"/>
+    <param name="balloon_zone_A/postcheck_enabled" value="true" type="bool"/>
+    <param name="balloon_zone_A/postcheck_height" value="1.25" type="double"/>
+    <param name="balloon_zone_A/postcheck_seconds" value="3.0" type="double"/>
     <param name="balloon_zone_A/approach_center_limit_px" value="65.0" type="double"/>
     <param name="balloon_zone_A/sprint_center_limit_px" value="40.0" type="double"/>
     <param name="balloon_zone_A/align_frames_required" value="3" type="int"/>
