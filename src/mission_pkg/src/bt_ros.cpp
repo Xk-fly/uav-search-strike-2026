@@ -349,6 +349,11 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_enforce_range = (a_zone ? "true" : "false");
         std::string vs_pursuit_max = std::to_string(getDbl(param_prefix + "/max_pursuit_distance_m", 3.35));
         std::string vs_sprint_buffer = std::to_string(getDbl(param_prefix + "/sprint_buffer_m", 0.65));
+        std::string vs_near_enabled = a_zone ? "true" : "false";
+        std::string vs_near_area = std::to_string(getDbl(param_prefix + "/near_contact_area_ratio", 0.06));
+        std::string vs_near_x = std::to_string(getDbl(param_prefix + "/near_contact_max_x_px", 120.0));
+        std::string vs_near_seconds = std::to_string(getDbl(param_prefix + "/near_contact_verify_seconds", 1.8));
+        std::string vs_near_frames = std::to_string((int)getDbl(param_prefix + "/near_contact_missing_frames", 5));
         int strike_timeout_ms = (int)getDbl(param_prefix + "/strike_timeout_ms", a_zone ? 90000.0 : 50000.0);
         bool postcheck_enabled = a_zone;
         nh.param<bool>(param_prefix + "/postcheck_enabled",postcheck_enabled,a_zone);
@@ -387,7 +392,12 @@ std::string commandToXmlNode(const std::string& command) {
             "min_tracking_after_lock_sec=\"" + vs_min_track + "\" "
             "enforce_pursuit_range=\"" + vs_enforce_range + "\" "
             "max_pursuit_distance_m=\"" + vs_pursuit_max + "\" "
-            "sprint_buffer_m=\"" + vs_sprint_buffer + "\"/>\n"
+            "sprint_buffer_m=\"" + vs_sprint_buffer + "\" "
+            "near_contact_verify_enabled=\"" + vs_near_enabled + "\" "
+            "near_contact_area_ratio=\"" + vs_near_area + "\" "
+            "near_contact_max_x_px=\"" + vs_near_x + "\" "
+            "near_contact_verify_seconds=\"" + vs_near_seconds + "\" "
+            "near_contact_missing_frames=\"" + vs_near_frames + "\"/>\n"
             "          </Parallel>\n"
             "      </Timeout>\n";
         if (postcheck_enabled) {

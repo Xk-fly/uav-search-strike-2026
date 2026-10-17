@@ -25,6 +25,7 @@ private:
         ALIGN,      // 对齐：原地旋转 yaw_rate，使目标水平居中
         APPROACHING, // 靠近：VX 前进 + yaw_rate + VZ 修正
         SPRINTING,  // 受限速度和偏航的短程打击
+        CONTACT_VERIFY, // 近距离APPROACH消失：多帧无红球复核，先停止运动
         BRAKING     // 冲刺后悬停缓冲
     };
     
@@ -69,6 +70,17 @@ private:
     double sprint_buffer_m_{0.65};
     geometry_msgs::Point pursuit_origin_;
     bool pursuit_limit_reached_{false};
+    // 仅A区开启：接近时疑似物理接触，不强制等到SPRINTING才可验证。
+    bool near_contact_verify_enabled_{false};
+    double near_contact_area_ratio_{0.06};
+    double near_contact_max_x_px_{120.0};
+    double near_contact_verify_seconds_{1.8};
+    int near_contact_missing_frames_{5};
+    int verify_missing_count_{0};
+    double verify_last_missing_stamp_{0.0};
+    double latest_missing_frame_stamp_{0.0};
+    ros::Time contact_verify_start_;
+    ros::Time last_forward_command_time_;
     
     // 相机参数
     double img_cx_, img_cy_;

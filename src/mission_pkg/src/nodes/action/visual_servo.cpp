@@ -72,7 +72,12 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("min_tracking_after_lock_sec", 1.5, "首次锁定后至少跟踪秒数"),
              InputPort<bool>("enforce_pursuit_range", false, "开启A区追踪距离保护"),
              InputPort<double>("max_pursuit_distance_m", 3.35, "从A区入口允许的最大水平位移"),
-             InputPort<double>("sprint_buffer_m", 0.65, "给冲刺+制动预留的安全距离") };
+             InputPort<double>("sprint_buffer_m", 0.65, "给冲刺+制动预留的安全距离"),
+             InputPort<bool>("near_contact_verify_enabled", false, "A区近距离接近阶段红球消失复核"),
+             InputPort<double>("near_contact_area_ratio", 0.06, "APPROACH最后近距离目标面积占比"),
+             InputPort<double>("near_contact_max_x_px", 120.0, "APPROACH最后目标的允许横向偏差"),
+             InputPort<double>("near_contact_verify_seconds", 1.8, "近距离失球持续复核秒数"),
+             InputPort<int>("near_contact_missing_frames", 5, "复核需要不同无目标图像帧数") };
 }
 
 NodeStatus VisualServo::onStart() {
@@ -125,7 +130,19 @@ NodeStatus VisualServo::onStart() {
     enforce_pursuit_range_ = getInput<bool>("enforce_pursuit_range").value();
     max_pursuit_distance_m_ = getInput<double>("max_pursuit_distance_m").value();
     sprint_buffer_m_ = getInput<double>("sprint_buffer_m").value();
-    if (!std::isfinite(max_pursuit_distance_m_) || max_pursuit_distance_m_ <= 0.5 ||
+    near_contact_verify_enabled_ = getInput<bool>("near_contact_verify_enabled").value();
+    near_contact_area_ratio_ = getInput<double>("near_contact_area_ratio").value();
+    near_contact_max_x_px_ = getInput<double>("near_contact_max_x_px").value();
+    near_contact_verify_seconds_ = getInput<double>("near_contact_verify_seconds").value();
+    near_contact_missing_frames_ = getInput<int>("near_contact_missing_frames").value();
+    if (!std::isfinite(near_contact_area_ratio_) || near_contact_area_ratio_ < 0.01 ||
+        near_contact_area_ratio_ > 0.40 ||
+        !std::isfinite(near_contact_max_x_px_) || near_contact_max_x_px_ <= 0 ||
+        near_contact_max_x_px_ > img_w_ / 2.0 ||
+        !std::isfinite(near_contact_verify_seconds_) || near_contact_verify_seconds_ < 0.5 ||
+        near_contact_verify_seconds_ > 5.0 ||
+        near_contact_missing_frames_ < 2 || near_contact_missing_frames_ > 30 ||
+        !std::isfinite(max_pursuit_distance_m_) || max_pursuit_distance_m_ <= 0.5 ||
         !std::isfinite(sprint_buffer_m_) || sprint_buffer_m_ < 0 ||
         sprint_buffer_m_ >= max_pursuit_distance_m_ ||
         lock_confirmation_required_ < 1 || lock_confirmation_required_ > 15 ||
@@ -150,6 +167,9 @@ NodeStatus VisualServo::onStart() {
     floor_z_=std::max(min_world_z_,initial.z-max_descent_);
     pursuit_origin_=initial;
     pursuit_limit_reached_=false;
+    verify_missing_count_=0;
+    verify_last_missing_stamp_=latest_missing_frame_stamp_=0.0;
+    contact_verify_start_=last_forward_command_time_=ros::Time(0);
     climbing_to_safe_z_=false;
     target_visible_=false; strike_was_visible_=false; explicit_no_target_frame_=false;
     std_msgs::Bool flag;flag.data=false;visible_pub_.publish(flag);hit_pub_.publish(flag);
@@ -224,6 +244,45 @@ NodeStatus VisualServo::onRunning() {
         return NodeStatus::RUNNING;
     }
 
+    // 进入该状态已立即发0速度；复核期间不再追逐移动小车。
+    // 使用新到达的无红球检测帧计数；检测流中断不能冒充连续消失。
+    if (current_state_ == CONTACT_VERIFY) {
+        publishVelocityWithYawRate(0,0,0,0);
+        if (target_visible_) {
+            current_state_=ALIGN;
+            align_stable_frames_=0;
+            sprint_confirmation_streak_=0;
+            ROS_WARN("[%s] NEAR_CONTACT_CANCEL: red balloon reappeared, resume ALIGN",name().c_str());
+            return NodeStatus::RUNNING;
+        }
+        if (explicit_no_target_frame_ &&
+            latest_missing_frame_stamp_ > verify_last_missing_stamp_ + 1e-4) {
+            verify_last_missing_stamp_=latest_missing_frame_stamp_;
+            ++verify_missing_count_;
+        }
+        const double verify_elapsed=(now-contact_verify_start_).toSec();
+        if (verify_elapsed >= near_contact_verify_seconds_ &&
+            verify_missing_count_ >= near_contact_missing_frames_) {
+            std_msgs::Bool hit;hit.data=true;hit_pub_.publish(hit);
+            ROS_WARN("[%s] HIT_CANDIDATE_APPROACH: disappeared %.2fs after close approach; negative_frames=%d (candidate, not confirmed)",
+                     name().c_str(), verify_elapsed,verify_missing_count_);
+            current_state_=BRAKING;
+            brake_start_time_=now;
+            return NodeStatus::RUNNING;
+        }
+        if (verify_elapsed > near_contact_verify_seconds_+1.5) {
+            ROS_WARN("[%s] NEAR_CONTACT_INCONCLUSIVE: only %d independent empty frames, resume wait",
+                     name().c_str(),verify_missing_count_);
+            current_state_=ALIGN;
+            align_stable_frames_=0;
+            return NodeStatus::RUNNING;
+        }
+        ROS_INFO_THROTTLE(0.6, "[%s] NEAR_CONTACT_VERIFY missing=%d/%d elapsed=%.2f/%.2f",
+                          name().c_str(),verify_missing_count_,near_contact_missing_frames_,
+                          verify_elapsed,near_contact_verify_seconds_);
+        return NodeStatus::RUNNING;
+    }
+
     if (current_state_ == BRAKING) {
         // 悬停前先让速度闭环降速，避免在高速时抓取一个位置设定值。
         publishVelocityWithYawRate(0,0,0,0);
@@ -261,6 +320,28 @@ NodeStatus VisualServo::onRunning() {
     // 明确空检测立即制动；若整个感知流中断，data_timeout到期制动。
     // 只有正在冲刺且曾见到目标时的消失才可能是命中候选。
     if (explicit_no_target_frame_ || isTargetLost()) {
+        // A区红球接近阶段也可能接触并击破。仅当近距离画面、近期确实前进、
+        // 且丢失紧接有效近距识别之后，才进入候选复核；普通失球仍悬停等待。
+        const double recent_area=last_target_.area() /
+             (static_cast<double>(img_w_)*img_h_);
+        const double last_x=last_target_.center_x-img_cx_;
+        const double since_seen=(now-last_valid_detection_time_).toSec();
+        const double since_forward=(now-last_forward_command_time_).toSec();
+        if (near_contact_verify_enabled_ && current_state_==APPROACHING &&
+            target_seen_once_ && recent_area >= near_contact_area_ratio_ &&
+            std::abs(last_x) <= near_contact_max_x_px_ &&
+            std::isfinite(since_seen) && since_seen>=0 && since_seen<=0.65 &&
+            !last_forward_command_time_.isZero() &&
+            std::isfinite(since_forward) && since_forward>=0 && since_forward<=0.80) {
+            current_state_=CONTACT_VERIFY;
+            contact_verify_start_=now;
+            verify_missing_count_=0;
+            verify_last_missing_stamp_=0.0;
+            publishVelocityWithYawRate(0,0,0,0);
+            ROS_WARN("[%s] NEAR_CONTACT_START: area=%.3f x=%.1f, last_seen=%.2fs last_forward=%.2fs; brake and verify",
+                     name().c_str(),recent_area,last_x,since_seen,since_forward);
+            return NodeStatus::RUNNING;
+        }
         if (current_state_ == SPRINTING) {
             ROS_WARN("[%s] SPRINT stopped after target timeout/no-detection",name().c_str());
             current_state_=BRAKING;brake_start_time_=now;
@@ -361,6 +442,7 @@ NodeStatus VisualServo::onRunning() {
             const bool preserve_sprint_space = enforce_pursuit_range_ &&
                 pursuit_distance + sprint_buffer_m_ >= max_pursuit_distance_m_;
             const double vx = preserve_sprint_space ? 0.0 : forward_velocity_ * align_ratio;
+            if (vx > 0.10) last_forward_command_time_=now;
             publishVelocityWithYawRate(vx, 0, vz,
                                        preserve_sprint_space ? 0.0 : yaw_rate);
             if (preserve_sprint_space)
@@ -496,6 +578,8 @@ void VisualServo::updateTargetData() {
         current_target.timestamp>0 &&
         (now_sec-current_target.timestamp)>=-0.2 &&
         (now_sec-current_target.timestamp)<=data_timeout_);
+    if (explicit_no_target_frame_)
+        latest_missing_frame_stamp_=current_target.timestamp;
     if (explicit_no_target_frame_ && !target_seen_once_) {
         lock_confirmation_streak_ = 0;
         lock_last_detection_stamp_ = 0.0;

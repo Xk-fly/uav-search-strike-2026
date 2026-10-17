@@ -65,3 +65,11 @@
 - 用户指定下轮直接测试A区固定目标高度**0.55m**（原0.75m），同步将A区`min_world_z=0.43m`；当前默认`max_descent_from_entry=0.15`，预计floor=max(0.43,0.55-0.15)=0.43m，保护触发约floor+0.04=0.47m，触发后目标爬升至floor+0.12=0.55m。此值仅是**仿真试验限位**，在机身/车体几何不明确时不得将其视为已认证防撞净空。
 - A区`horizontal_only_alignment=true`，`VisualServo`仍在控制vx+yaw但**不主动调节VZ**；先单独验证改变固定航点高度的影响，避免与重启垂直视觉伺服混合改变因素。复测前请确保0.55m沿途以及小车车顶的净空，安全不符应取消本轮低高度测试。
 - 其他A区触发/保护（面积2.5%、连续3帧锁定、连续5帧冲刺、3.35m追踪距离、0.65m冲刺余量）保持不变；主备份分支不动。
+
+## 2026-10-17 20:03近距红球疑似击破与去A区Ego间隙优化（待服务器验证）
+- 上轮0.55m实验：目视红球从小车消失，但A区视觉伺服始终未满足SPRINT门槛，`APPROACHING`失球只能进入等待，直到任务FAILURE。
+- 仅A区启用`CONTACT_VERIFY`：在APPROACH中曾稳定锁球、最近有前进指令、最后目标面积≥6%、横向误差≤120px、最近检测及前进指令都足够新鲜，随后失球立即零速度制动，持续1.8s复核至少5帧新的无红球检测；期间复现红球立即取消并重对准；成功复核只上报`hit_candidate=true`，然后进入原`BRAKING`，再交给已有StableHover、爬升、下视3s观察和Ego返航。若无足够检测数据，则判不确定并回等待，不把掉帧视为成功。
+- A区冲刺门槛试调为面积2.0%（原2.5%），横向误差50px（原40px），不同检测帧3（原5），纵向容差150px（原130px），冲刺速度0.9m/s、时长0.6s以及0.5s制动不变；B/C区完全保留之前行为。
+- Ego占据地图膨胀半径0.25→0.30m，只改FS-J310 ROS launch参数、非规划核心代码；全局生效，故必须特别回归正反穿框和A区近框转场，必要时通过`obstacles_inflation:=0.25`恢复。**地图全局膨胀并非可测量的机体实际净空保证**。
+- 0.55m高度、A区3.35m追踪上限、0.65m冲刺余量、A区已验证多帧航向锁定维持不变。
+- 等待GPUFree服务器编译与rosbag验收：`NEAR_CONTACT_START`、`NEAR_CONTACT_VERIFY`、`HIT_CANDIDATE_APPROACH`、`NEAR_CONTACT_CANCEL`、`APPROACH -> SPRINT`、`SPRINT -> BRAKING`、`StableHover SUCCESS`、`A_ZONE_POSTCHECK`以及`/mission_result`。如果视觉候选为真但下视红球仍在，应记录冲突，并非比赛正式命中。

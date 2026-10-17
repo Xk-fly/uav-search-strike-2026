@@ -99,7 +99,12 @@
     <param name="balloon_zone_A/goal"         value="5.3;1.0;0.55" type="str"/>
     <param name="balloon_zone_A/yaw"          value="1.5708"        type="double"/>
     <!-- A区动态跑道：仅到位后首见红球才锁定航向，丢失时悬停等待重新出现 -->
-    <param name="balloon_zone_A/approach_area_threshold" value="0.025" type="double"/>
+    <param name="balloon_zone_A/approach_area_threshold" value="0.020" type="double"/>
+    <!-- 只放宽A区冲刺确认；其他颜色与穿框阶段保持原设定 -->
+    <param name="balloon_zone_A/near_contact_area_ratio" value="0.060" type="double"/>
+    <param name="balloon_zone_A/near_contact_max_x_px" value="120.0" type="double"/>
+    <param name="balloon_zone_A/near_contact_verify_seconds" value="1.8" type="double"/>
+    <param name="balloon_zone_A/near_contact_missing_frames" value="5" type="int"/>
     <!-- 0.55m仅用于RflySim低高度对照试验：需确认机体最低点/小车车顶的净空，现实飞机禁直接套用。 -->
     <param name="balloon_zone_A/enforce_pursuit_range" value="true" type="bool"/>
     <param name="balloon_zone_A/max_pursuit_distance_m" value="3.35" type="double"/>
@@ -108,12 +113,12 @@
     <param name="balloon_zone_A/postcheck_height" value="1.25" type="double"/>
     <param name="balloon_zone_A/postcheck_seconds" value="3.0" type="double"/>
     <param name="balloon_zone_A/approach_center_limit_px" value="65.0" type="double"/>
-    <param name="balloon_zone_A/sprint_center_limit_px" value="40.0" type="double"/>
+    <param name="balloon_zone_A/sprint_center_limit_px" value="50.0" type="double"/>
     <param name="balloon_zone_A/align_frames_required" value="3" type="int"/>
-    <param name="balloon_zone_A/sprint_vertical_limit_px" value="130.0" type="double"/>
+    <param name="balloon_zone_A/sprint_vertical_limit_px" value="150.0" type="double"/>
     <param name="balloon_zone_A/initial_search_max_yaw_rad" value="1.20" type="double"/>
     <param name="balloon_zone_A/lock_confirmation_frames" value="3" type="int"/>
-    <param name="balloon_zone_A/sprint_confirmation_frames" value="5" type="int"/>
+    <param name="balloon_zone_A/sprint_confirmation_frames" value="3" type="int"/>
     <param name="balloon_zone_A/min_tracking_after_lock_sec" value="1.5" type="double"/>
     <param name="balloon_zone_A/min_world_z" value="0.43" type="double"/>
     <param name="balloon_zone_A/search_yaw_rate" value="0.12" type="double"/>

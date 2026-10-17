@@ -3,6 +3,8 @@
   <arg name="map_size_x" value="12.0"/>
   <arg name="map_size_y" value="8.0"/>
   <arg name="map_size_z" value="2.0"/>
+  <!-- 可直接roslaunch传obstacles_inflation:=0.25快速回退 -->
+  <arg name="obstacles_inflation" default="0.30"/>
 
   <node pkg="tf" type="static_transform_publisher" name="map_world" args="0 0 0 0 0 0  world map 1000" />
   <node pkg="tf" type="static_transform_publisher" name="camera_link" args="0.1 0.04 0 0 0 0  base_link camera_link 1000" />
@@ -19,6 +21,7 @@
     <arg name="map_size_x_" value="$(arg map_size_x)"/>
     <arg name="map_size_y_" value="$(arg map_size_y)"/>
     <arg name="map_size_z_" value="$(arg map_size_z)"/>
+    <arg name="obstacles_inflation_" value="$(arg obstacles_inflation)"/>
     <arg name="odometry_topic" value="$(arg odom_topic)"/>
 
     <!-- camera pose: transform of camera frame in the world frame -->
