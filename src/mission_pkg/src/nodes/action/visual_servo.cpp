@@ -325,11 +325,16 @@ NodeStatus VisualServo::onRunning() {
         const double recent_area=last_target_.area() /
              (static_cast<double>(img_w_)*img_h_);
         const double last_x=last_target_.center_x-img_cx_;
+        // 大近景气球可贴着相机边缘，旋翼侧面也有可能已经接触。
+        // 不把普通边缘小目标当命中：边缘放宽必须同时要求>=9%的画面占比。
+        const bool plausible_contact_x =
+            std::abs(last_x) <= near_contact_max_x_px_ ||
+            (recent_area >= 0.09 && std::abs(last_x) <= img_w_ * 0.45);
         const double since_seen=(now-last_valid_detection_time_).toSec();
         const double since_forward=(now-last_forward_command_time_).toSec();
         if (near_contact_verify_enabled_ && current_state_==APPROACHING &&
             target_seen_once_ && recent_area >= near_contact_area_ratio_ &&
-            std::abs(last_x) <= near_contact_max_x_px_ &&
+            plausible_contact_x &&
             std::isfinite(since_seen) && since_seen>=0 && since_seen<=0.65 &&
             !last_forward_command_time_.isZero() &&
             std::isfinite(since_forward) && since_forward>=0 && since_forward<=0.80) {
@@ -502,6 +507,7 @@ NodeStatus VisualServo::onRunning() {
                               name().c_str(), sprint_velocity_, limited_yaw, elapsed, sprint_time_);
             break;
         }
+        case CONTACT_VERIFY:
         case BRAKING:
             break; // 前面已处理
     }
