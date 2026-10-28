@@ -48,32 +48,15 @@
     <param name="cross_frame/filter_window_size"  value="20"            type="double"/> <!-- 滤波窗口 -->
     <param name="cross_frame/offset_z"            value="1.0"           type="double"/> <!-- 规划z偏移 -->
 
-    <!-- ArUco 往返/反穿框前后精准移动（仅 PrecisionMove 使用，不修改普通 GoTo） -->
-    <param name="precision_move/max_speed"       value="0.35" type="double"/> <!-- 参考轨迹最大三维速度 m/s -->
-    <param name="precision_move/max_accel"       value="0.25" type="double"/> <!-- 参考轨迹加减速度 m/s^2 -->
-    <param name="precision_move/max_lead"        value="0.25" type="double"/> <!-- 位置参考点超前机体的最大沿线距离 m -->
-    <param name="precision_move/tolerance"       value="0.12" type="double"/> <!-- 最终三维位置误差 m -->
-    <param name="precision_move/speed_tolerance" value="0.10" type="double"/> <!-- 稳定时实际速度上限 m/s -->
-    <param name="precision_move/settle_time"     value="0.70" type="double"/> <!-- 达标持续时间 s -->
-    <param name="precision_move/timeout"         value="60.0" type="double"/> <!-- 单段执行最大时长 s -->
-    <param name="precision_move/odom_timeout"    value="1.00" type="double"/> <!-- 里程计失联阈值 s -->
-    <param name="precision_move/abort_speed"     value="0.70" type="double"/> <!-- 实际速度异常熔断 m/s -->
-    <param name="precision_move/yaw_rate"        value="0.50" type="double"/> <!-- 偏航设定角速度限幅 rad/s -->
-
     <!-- ArUco 检测 -->
     <param name="aruco/hover_pos" value="4.5;0.5;1.2" type="str"/>     <!-- 二维码上方悬停位置 -->
 
-    <!-- 返程动态朝向与单次反穿框额外前进1m -->
-    <param name="return_cross_frame/yaw_rate" value="0.35" type="double"/>
-    <param name="return_cross_frame/exit_distance" value="1.5" type="double"/>
-    <param name="return_cross_frame/approach_extra_distance" value="0.5" type="double"/>
     <!-- 返回穿越方框 -->
+    <param name="return_cross_frame/turn_pos"     value="4.5;0.5;1.8"   type="str"/>    <!-- 转向位置 -->
+    <param name="return_cross_frame/turn_yaw"     value="3.14159"        type="double"/> <!-- 转向航向(rad) -->
+    <param name="return_cross_frame/body_forward"  value="0.5;0.0;0.0"   type="str"/>    <!-- 机体系前进距离 -->
 
     <!-- 降落 -->
-    <param name="land/return_safe_pos" value="0.0;0.0;1.0" type="str"/>
-    <param name="land/stable_speed_mps" value="0.16" type="double"/>
-    <param name="land/stable_time_sec" value="0.90" type="double"/>
-    <param name="land/stable_timeout_sec" value="9.0" type="double"/>
     <param name="land/return_pos" value="0.0;0.0;0.5" type="str"/>     <!-- 降落前返回位置 -->
     <param name="land/return_yaw" value="0.0" type="double"/>         <!-- 降落前航向(rad) -->
 
@@ -87,6 +70,7 @@
     <!-- ============================================ -->
     <!-- 穿回框后掉头朝向                               -->
     <!-- ============================================ -->
+    <param name="return_cross_frame/exit_yaw" value="0.0" type="double"/>
 
     <!-- ============================================ -->
     <!-- 气球打击区域配置（比赛前调整）                   -->
@@ -95,35 +79,9 @@
     <!-- yaw:  到达位置时的机头朝向 (rad)                -->
     <!-- ============================================ -->
     <!-- A区 (红色气球) -->
-    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;0.55" type="str"/>
-    <param name="balloon_zone_A/goal"         value="5.3;1.0;0.55" type="str"/>
+    <param name="balloon_zone_A/approach_pos" value="5.3;1.0;1.0"  type="str"/>
+    <param name="balloon_zone_A/goal"         value="5.3;1.0;1.0"  type="str"/>
     <param name="balloon_zone_A/yaw"          value="1.5708"        type="double"/>
-    <!-- A区动态跑道：仅到位后首见红球才锁定航向，丢失时悬停等待重新出现 -->
-    <param name="balloon_zone_A/approach_area_threshold" value="0.020" type="double"/>
-    <!-- 只放宽A区冲刺确认；其他颜色与穿框阶段保持原设定 -->
-    <param name="balloon_zone_A/near_contact_area_ratio" value="0.060" type="double"/>
-    <param name="balloon_zone_A/near_contact_max_x_px" value="120.0" type="double"/>
-    <param name="balloon_zone_A/near_contact_verify_seconds" value="1.8" type="double"/>
-    <param name="balloon_zone_A/near_contact_missing_frames" value="5" type="int"/>
-    <!-- 0.55m仅用于RflySim低高度对照试验：需确认机体最低点/小车车顶的净空，现实飞机禁直接套用。 -->
-    <param name="balloon_zone_A/enforce_pursuit_range" value="true" type="bool"/>
-    <param name="balloon_zone_A/max_pursuit_distance_m" value="3.35" type="double"/>
-    <param name="balloon_zone_A/sprint_buffer_m" value="0.65" type="double"/>
-    <param name="balloon_zone_A/postcheck_enabled" value="true" type="bool"/>
-    <param name="balloon_zone_A/postcheck_height" value="1.25" type="double"/>
-    <param name="balloon_zone_A/postcheck_seconds" value="3.0" type="double"/>
-    <param name="balloon_zone_A/approach_center_limit_px" value="65.0" type="double"/>
-    <param name="balloon_zone_A/sprint_center_limit_px" value="50.0" type="double"/>
-    <param name="balloon_zone_A/align_frames_required" value="3" type="int"/>
-    <param name="balloon_zone_A/sprint_vertical_limit_px" value="150.0" type="double"/>
-    <param name="balloon_zone_A/initial_search_max_yaw_rad" value="1.20" type="double"/>
-    <param name="balloon_zone_A/lock_confirmation_frames" value="3" type="int"/>
-    <param name="balloon_zone_A/sprint_confirmation_frames" value="3" type="int"/>
-    <param name="balloon_zone_A/min_tracking_after_lock_sec" value="1.5" type="double"/>
-    <param name="balloon_zone_A/min_world_z" value="0.43" type="double"/>
-    <param name="balloon_zone_A/search_yaw_rate" value="0.12" type="double"/>
-    <param name="balloon_zone_A/data_timeout" value="0.40" type="double"/>
-    <param name="balloon_zone_A/strike_timeout_ms" value="90000" type="int"/>
     <!-- B区 (紫色气球) -->
     <param name="balloon_zone_B/approach_pos" value="5.3;-2.0;0.7" type="str"/>
     <param name="balloon_zone_B/goal"         value="5.3;-2.0;0.7" type="str"/>
@@ -141,16 +99,9 @@
     <param name="visual_servo/k_p_vz"                  value="0.01"  type="double"/>
     <param name="visual_servo/k_d_vz"                  value="0.006" type="double"/>
     <param name="visual_servo/approach_area_threshold"  value="0.08"  type="double"/>
-    <param name="visual_servo/forward_velocity"         value="0.4"   type="double"/>
-    <param name="visual_servo/sprint_velocity"          value="0.9"   type="double"/>
-    <param name="visual_servo/sprint_time"              value="0.6"   type="double"/>
-    <param name="visual_servo/max_sprint_yaw_rate"     value="0.08"  type="double"/>
-    <param name="visual_servo/approach_center_limit_px" value="48.0" type="double"/>
-    <param name="visual_servo/sprint_center_limit_px" value="24.0" type="double"/>
-    <param name="visual_servo/brake_time"              value="0.5"   type="double"/>
-    <param name="visual_servo/min_world_z"             value="0.90" type="double"/>
-    <param name="visual_servo/max_descent_from_entry"  value="0.15" type="double"/>
-    <param name="visual_servo/max_vertical_speed"      value="0.10" type="double"/>
+    <param name="visual_servo/forward_velocity"         value="1.0"   type="double"/>
+    <param name="visual_servo/sprint_velocity"          value="1.5"   type="double"/>
+    <param name="visual_servo/sprint_time"              value="1.2"   type="double"/>
 
     <!-- 运行任务节点（LLM 模式） -->
     <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">
@@ -158,8 +109,7 @@
     </node>
 
     <!-- 日志录制（可选，默认关闭） -->
-    <arg name="enable_logging" default="true"/>
-    <arg name="log_dir" default="$(env HOME)/uav_demo_bags"/>
+    <arg name="enable_logging" default="false"/>
     
     <node if="$(arg enable_logging)" 
           pkg="rosbag" 
@@ -168,17 +118,10 @@
           args="/mavros/local_position/odom 
                 /mavros/state 
                 /mavros/setpoint_raw/local 
-                /objects
-                /objects_down
-                /rflysim/uav1/local/odom
-                /balloon_attack/target_visible
-                /balloon_attack/hit_candidate
-                /balloon_attack/postcheck_result
-                /aruco/detected_id
-                /rosout
+                /objects 
                 /planning/pos_cmd 
                 /move_base_simple/goal 
                 /mission_command 
                 /mission_result 
-                -o $(arg log_dir)/llm_mission_"/>
+                -o $(find mission_pkg)/../../logs/llm_mission_"/>
 </launch>

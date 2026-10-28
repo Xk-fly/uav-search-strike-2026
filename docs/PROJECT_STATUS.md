@@ -1,5 +1,8 @@
 # 项目状态与对话交接（PROJECT_STATUS.md）
 
+> **2026-10-28 当前恢复分支说明：** 本分支 `codex/restore-official-flight` 的整个 `src/` 恢复为 `official-demo-baseline @ 2c0fe57`，启动脚本仅保留 GPUFree SDK 路径修复；下文开发历史不代表此恢复分支正在使用新增控制逻辑。云端编译/飞行仍待验证，操作步骤与速度差异见 [OFFICIAL_FLIGHT_RESTORE_20261028.md](OFFICIAL_FLIGHT_RESTORE_20261028.md)。原 `dev` 功能版本仍保留。
+
+
 > **2026-10-16 最新状态提示：本文件主体是 2026-09-16 的历史交接快照。当前 L40 克隆实例上已观察到官方 Demo 六步完整执行。最新验收请优先阅读 [BASELINE_20261016.md](BASELINE_20261016.md)、[HANDOFF_20261016.md](HANDOFF_20261016.md)；多次穿模、气球真实命中未验证，见 [ISSUES_20261016.md](ISSUES_20261016.md)。**
 
 

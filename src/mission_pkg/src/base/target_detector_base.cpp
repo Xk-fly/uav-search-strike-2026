@@ -48,8 +48,7 @@ NodeStatus TargetDetectorBase::onStart() {
 NodeStatus TargetDetectorBase::onRunning() {
     // 1. 检查是否有新的感知消息
     if (!has_new_objects_msg_) {
-        // 本tick没新YOLO消息不等于当前图像确认没有目标。
-        return handleNoNewData();
+        return handleNoDetection();
     }
     
     has_new_objects_msg_ = false;  // 标记已消费

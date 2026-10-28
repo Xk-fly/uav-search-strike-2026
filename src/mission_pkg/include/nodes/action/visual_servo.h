@@ -10,7 +10,6 @@
 
 #include "base/drone_action_node.h"
 #include <ros/time.h>
-#include <std_msgs/Bool.h>
 
 class VisualServo : public DroneActionNode {
 public:
@@ -24,9 +23,7 @@ private:
     enum ServoState {
         ALIGN,      // 对齐：原地旋转 yaw_rate，使目标水平居中
         APPROACHING, // 靠近：VX 前进 + yaw_rate + VZ 修正
-        SPRINTING,  // 受限速度和偏航的短程打击
-        CONTACT_VERIFY, // 近距离APPROACH消失：多帧无红球复核，先停止运动
-        BRAKING     // 冲刺后悬停缓冲
+        SPRINTING   // 冲刺：全速 VX 冲刺一段固定时间
     };
     
     // 状态
@@ -36,51 +33,7 @@ private:
     bool has_ever_received_data_;
     double max_area_ratio_;
     ros::Time sprint_start_time_;
-    ros::Time brake_start_time_;
-    bool target_visible_{false};
-    bool strike_was_visible_{false};
-    bool explicit_no_target_frame_{false};
-    ros::Publisher visible_pub_, hit_pub_;
-    double min_world_z_{0.90}, max_descent_{0.15}, max_servo_vz_{0.10};
-    double floor_z_{0.90};
-    bool climbing_to_safe_z_{false};
-    ros::Time climb_start_;
-    geometry_msgs::Point climb_goal_;
-    double climb_yaw_{0.0};
     int align_stable_frames_;
-    // A区可选模式：首次见球后，丢失时不转向、不盲目前进。
-    bool lock_yaw_after_first_detection_{false};
-    bool horizontal_only_alignment_{false};
-    bool target_seen_once_{false};
-    int align_frames_required_{5};
-    double sprint_vertical_limit_px_{55.0};
-    double initial_search_max_yaw_rad_{0.60};
-    double initial_yaw_{0.0};
-    double servo_start_stamp_{0.0};
-    double last_align_detection_stamp_{0.0};
-    int lock_confirmation_required_{3}, lock_confirmation_streak_{0};
-    double lock_last_detection_stamp_{0.0};
-    ros::Time lock_confirmed_at_;
-    int sprint_confirmation_required_{5}, sprint_confirmation_streak_{0};
-    double sprint_last_detection_stamp_{0.0};
-    double min_tracking_after_lock_sec_{1.5};
-    // A区专用：从进入视觉伺服时的位置计算追车位移，限制近墙追击。
-    bool enforce_pursuit_range_{false};
-    double max_pursuit_distance_m_{3.35};
-    double sprint_buffer_m_{0.65};
-    geometry_msgs::Point pursuit_origin_;
-    bool pursuit_limit_reached_{false};
-    // 仅A区开启：接近时疑似物理接触，不强制等到SPRINTING才可验证。
-    bool near_contact_verify_enabled_{false};
-    double near_contact_area_ratio_{0.06};
-    double near_contact_max_x_px_{120.0};
-    double near_contact_verify_seconds_{1.8};
-    int near_contact_missing_frames_{5};
-    int verify_missing_count_{0};
-    double verify_last_missing_stamp_{0.0};
-    double latest_missing_frame_stamp_{0.0};
-    ros::Time contact_verify_start_;
-    ros::Time last_forward_command_time_;
     
     // 相机参数
     double img_cx_, img_cy_;
@@ -101,11 +54,7 @@ private:
     // 前进速度参数
     double forward_velocity_;       // 逼近阶段前进速度 (m/s)
     double sprint_velocity_;        // 冲刺速度 (m/s)
-    double sprint_time_;
-    double max_sprint_yaw_rate_{0.08};
-    double approach_center_limit_px_{48.0};
-    double sprint_center_limit_px_{24.0};
-    double brake_time_{0.50};            // 冲刺持续时间 (s)
+    double sprint_time_;            // 冲刺持续时间 (s)
     
     // 其他参数
     double data_timeout_;           // 数据超时 (s)
@@ -118,6 +67,7 @@ private:
     ros::Time prev_time_;
     
     // 常量
+    static constexpr int ALIGN_STABLE_FRAMES_REQUIRED = 5;
 
     // 辅助函数
     void updateTargetData();

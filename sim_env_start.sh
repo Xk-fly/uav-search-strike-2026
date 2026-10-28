@@ -131,12 +131,6 @@ xterm $XTERM_OPTS -T "YOLO Detection" \
 DET_PID=$!
 echo -e "${GREEN}      PID: ${DET_PID}${NC}"
 
-# 下视YOLO独立节点：模型初始化常驻，推理默认关闭；只有失败升高后使能。
-xterm $XTERM_OPTS -T "Down YOLO" \
-    -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch object_det detection_down.launch 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
-DOWN_DET_PID=$!
-echo -e "${GREEN}      Down YOLO PID: ${DOWN_DET_PID}${NC}"
-
 # =====================================================================
 # 3. 启动 MAVROS（当前已注释）
 # =====================================================================
@@ -239,9 +233,7 @@ fi
 echo ""
 echo -e "${GREEN}[9/11] 启动 LLM 任务节点 [独立 xterm] ...${NC}"
 
-# 所有比赛Demo rosbag统一存放到用户主目录，不再写入/tmp临时目录
-mkdir -p "${HOME}/uav_demo_bags"
-echo "本次 rosbag 保存目录: ${HOME}/uav_demo_bags"
+mkdir -p /tmp/mission_logs
 
 xterm $XTERM_OPTS -T "Mission (llm_mission)" \
     -e "bash --login -c '${XTERM_ENV}; source ${WS_DIR}/devel/setup.bash && roslaunch mission_pkg llm_mission.launch 2>&1; echo \"Press Enter to close\"; read; exec bash'" &
@@ -299,7 +291,7 @@ echo -e "${YELLOW}按 Ctrl+C 关闭所有后台进程${NC}"
 cleanup() {
     echo ""
     echo -e "${RED}正在关闭所有进程...${NC}"
-    kill $ROSCORE_PID $LLM_PID $MAVROS_PID $SENSOR_PID $MAP_PID $CLOUD_PID $DET_PID $DOWN_DET_PID $ARUCO_PID $EGO_PID $MISSION_PID $SETPOINT_MON_PID $SYS_MON_PID 2>/dev/null
+    kill $ROSCORE_PID $LLM_PID $MAVROS_PID $SENSOR_PID $MAP_PID $CLOUD_PID $DET_PID $ARUCO_PID $EGO_PID $MISSION_PID $SETPOINT_MON_PID $SYS_MON_PID 2>/dev/null
     pkill -f "roscore" 2>/dev/null
     pkill -f "mavros" 2>/dev/null
     pkill -f "cloud_transform" 2>/dev/null

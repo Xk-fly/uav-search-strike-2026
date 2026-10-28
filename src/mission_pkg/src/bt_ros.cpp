@@ -269,30 +269,34 @@ std::string commandToXmlNode(const std::string& command) {
     // ---- detect_aruco: 飞到二维码上方识别 ----
     if (cmd == "detect_aruco") {
         std::string hover = getStr("aruco/hover_pos", "-1.0;4.0;1.8");
-        // 先精确移动并稳定，再单独检测：避免 Parallel 中两个节点同时写飞行指令。
         return
-            "      <PrecisionMove goal=\"" + hover + "\"/>\n"
-            "      <ArucoDetector aruco_id=\"{detected_aruco_id}\"/>\n";
+            "      <GoTo goal=\"" + hover + "\"/>\n"
+            "      <Parallel success_count=\"2\" failure_count=\"1\">\n"
+            "        <GoTo goal=\"" + hover + "\"/>\n"
+            "        <ArucoDetector aruco_id=\"{detected_aruco_id}\"/>\n"
+            "      </Parallel>\n";
     }
     
-    // ---- return_cross_frame: 动态返回，Ego单次反穿框后继续1m ----
+    // ---- return_cross_frame: 返回并反向穿越方框 ----
     if (cmd == "return_cross_frame") {
-        const double yaw_rate = getDbl("return_cross_frame/yaw_rate", 0.35);
-        const double exit_distance = getDbl("return_cross_frame/exit_distance", 1.5);
-        const double approach_extra = getDbl("return_cross_frame/approach_extra_distance", 0.5);
+        std::string turn_pos     = getStr("return_cross_frame/turn_pos",   "-1.0;4.0;1.8");
+        double      turn_yaw     = getDbl("return_cross_frame/turn_yaw",   3.14159);
+        std::string body_fwd     = getStr("return_cross_frame/body_forward", "0.5;0.0;0.0");
+        double      exit_yaw     = getDbl("return_cross_frame/exit_yaw",   0.0);
+        
         return
-            "      <!-- 原地朝向首次穿框后的记录点 -->\n"
-            "      <PrecisionMove face_goal=\"{planning_end_pos}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n"
-            "      <!-- 使用完整记录的XYZ平滑斜向返回 -->\n"
-            "      <PrecisionMove goal=\"{planning_end_pos}\" away_from=\"{frame_center}\" extend_distance=\"" + std::to_string(approach_extra) + "\"/>\n"
-            "      <!-- 新增：穿框前回到框心航向，让前视深度与框口同向 -->\n"
-            "      <PrecisionMove face_goal=\"{frame_center}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n"
-            "      <!-- Ego一次反穿框并沿穿框方向继续1m；不拆分两次0.5m -->\n"
-            "      <PlanningControl goal=\"{frame_center}\" through_from=\"{planning_end_pos}\" through_distance=\"" + std::to_string(exit_distance) + "\"/>\n"
-            "      <!-- 完全离框后，原地朝向已保存的框中心 -->\n"
-            "      <PrecisionMove face_goal=\"{frame_center}\" yaw_rate=\"" + std::to_string(yaw_rate) + "\"/>\n";
+            "      <!-- 旋转180度 -->\n"
+            "      <GoTo goal=\"" + turn_pos + "\" yaw=\"" + std::to_string(turn_yaw) + "\"/>\n"
+            "      <!-- 返回规划终点 -->\n"
+            "      <GoTo goal=\"{planning_end_pos}\"/>\n"
+            "      <!-- 反向穿越方框 -->\n"
+            "      <PlanningControl goal=\"{frame_center}\"/>\n"
+            "      <!-- 机体系前进 -->\n"
+            "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\"/>\n"
+            "      <!-- 掉头朝向气球区域 -->\n"
+            "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\" yaw=\"" + std::to_string(exit_yaw) + "\"/>\n";
     }
-
+    
     // ---- hit_balloon:颜色 ----
     if (cmd.rfind("hit_balloon", 0) == 0) {
         std::string color = "red";
@@ -322,56 +326,22 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_k_d_yaw  = std::to_string(getDbl("visual_servo/k_d_yaw_rate", 0.008));
         std::string vs_k_p_vz   = std::to_string(getDbl("visual_servo/k_p_vz", 0.01));
         std::string vs_k_d_vz   = std::to_string(getDbl("visual_servo/k_d_vz", 0.006));
-        std::string vs_area_th  = std::to_string(getDbl(param_prefix + "/approach_area_threshold", getDbl("visual_servo/approach_area_threshold", 0.08)));
-        std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 0.4));
-        std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 0.9));
-        std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 0.6));
-        std::string vs_sprint_yaw = std::to_string(getDbl("visual_servo/max_sprint_yaw_rate", 0.08));
-        std::string vs_app_center = std::to_string(getDbl(param_prefix + "/approach_center_limit_px", getDbl("visual_servo/approach_center_limit_px", 48.0)));
-        std::string vs_sp_center = std::to_string(getDbl(param_prefix + "/sprint_center_limit_px", getDbl("visual_servo/sprint_center_limit_px", 24.0)));
-        std::string vs_brake = std::to_string(getDbl("visual_servo/brake_time", 0.5));
-        // A区车道保持较高安全下限；B/C区保留原0.7m区域航点，
-        // 分区设置安全下限，避免本轮A区高度保护意外使其它颜色任务无法启动。
-        double default_floor = (zone == "A") ? getDbl("visual_servo/min_world_z", 0.90) : 0.55;
-        std::string vs_floor = std::to_string(getDbl(param_prefix + "/min_world_z", default_floor));
-        std::string vs_descent = std::to_string(getDbl("visual_servo/max_descent_from_entry", 0.15));
-        std::string vs_max_vz = std::to_string(getDbl("visual_servo/max_vertical_speed", 0.10));
-        const bool a_zone = (zone == "A");
-        const std::string a_bool = a_zone ? "true" : "false";
-        std::string vs_frames = std::to_string((int)getDbl(param_prefix + "/align_frames_required", a_zone ? 3 : 5));
-        std::string vs_vertical_tol = std::to_string(getDbl(param_prefix + "/sprint_vertical_limit_px", a_zone ? 130.0 : 55.0));
-        std::string vs_first_yaw_range = std::to_string(getDbl(param_prefix + "/initial_search_max_yaw_rad", 0.60));
-        std::string vs_data_timeout = std::to_string(getDbl(param_prefix + "/data_timeout", a_zone ? 0.40 : 1.0));
-        std::string vs_search_rate = std::to_string(getDbl(param_prefix + "/search_yaw_rate", a_zone ? 0.12 : 0.3));
-        std::string vs_lock_frames = std::to_string((int)getDbl(param_prefix + "/lock_confirmation_frames", a_zone ? 3 : 1));
-        std::string vs_sprint_frames = std::to_string((int)getDbl(param_prefix + "/sprint_confirmation_frames", a_zone ? 5 : 1));
-        std::string vs_min_track = std::to_string(getDbl(param_prefix + "/min_tracking_after_lock_sec", a_zone ? 1.5 : 0.0));
-        std::string vs_enforce_range = (a_zone ? "true" : "false");
-        std::string vs_pursuit_max = std::to_string(getDbl(param_prefix + "/max_pursuit_distance_m", 3.35));
-        std::string vs_sprint_buffer = std::to_string(getDbl(param_prefix + "/sprint_buffer_m", 0.65));
-        std::string vs_near_enabled = a_zone ? "true" : "false";
-        std::string vs_near_area = std::to_string(getDbl(param_prefix + "/near_contact_area_ratio", 0.06));
-        std::string vs_near_x = std::to_string(getDbl(param_prefix + "/near_contact_max_x_px", 120.0));
-        std::string vs_near_seconds = std::to_string(getDbl(param_prefix + "/near_contact_verify_seconds", 1.8));
-        std::string vs_near_frames = std::to_string((int)getDbl(param_prefix + "/near_contact_missing_frames", 5));
-        int strike_timeout_ms = (int)getDbl(param_prefix + "/strike_timeout_ms", a_zone ? 90000.0 : 50000.0);
-        bool postcheck_enabled = a_zone;
-        nh.param<bool>(param_prefix + "/postcheck_enabled",postcheck_enabled,a_zone);
-        const double postcheck_height=getDbl(param_prefix + "/postcheck_height",1.25);
-        const double postcheck_seconds=getDbl(param_prefix + "/postcheck_seconds",3.0);
+        std::string vs_area_th  = std::to_string(getDbl("visual_servo/approach_area_threshold", 0.08));
+        std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 1.0));
+        std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 1.5));
+        std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 1.2));
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
         
-        // 仅在Ego到达A区并完成GoTo定向后，才启动TargetTracker和VisualServo；
-        // 反穿框、赴A途中偶见红球不会触发首次锁定。
-        std::string xml =
+        return
             "      <!-- 规划飞到气球打击区域" + zone + " -->\n"
             "      <PlanningControl goal=\"" + approach_pos + "\"/>\n"
             "      <!-- 转向朝向" + zone + "区气球(" + color + ") -->\n"
             "      <GoTo goal=\"" + goto_pos + "\" yaw=\"" + yaw + "\"/>\n"
             "      <!-- 跟踪并撞击气球 -->\n"
-            "      <Timeout msec=\"" + std::to_string(strike_timeout_ms) + "\">\n"
+            "      <ForceSuccess>\n"
+            "        <Timeout msec=\"50000\">\n"
             "          <Parallel success_count=\"1\" failure_count=\"1\">\n"
             "            <TargetTracker object_name=\"" + balloon_name + "\" "
             "confidence_threshold=\"0.8\" pixel_target=\"{balloon_pixel}\"/>\n"
@@ -379,54 +349,20 @@ std::string commandToXmlNode(const std::string& command) {
             "k_p_yaw_rate=\"" + vs_k_p_yaw + "\" k_d_yaw_rate=\"" + vs_k_d_yaw + "\" "
             "k_p_vz=\"" + vs_k_p_vz + "\" k_d_vz=\"" + vs_k_d_vz + "\" "
             "approach_area_threshold=\"" + vs_area_th + "\" "
-            "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\" "
-            "max_sprint_yaw_rate=\"" + vs_sprint_yaw + "\" approach_center_limit_px=\"" + vs_app_center + "\" "
-            "sprint_center_limit_px=\"" + vs_sp_center + "\" brake_time=\"" + vs_brake + "\" "
-            "min_world_z=\"" + vs_floor + "\" max_descent_from_entry=\"" + vs_descent + "\" "
-            "max_vertical_speed=\"" + vs_max_vz + "\" "
-            "lock_yaw_after_first_detection=\"" + a_bool + "\" horizontal_only_alignment=\"" + a_bool + "\" "
-            "align_frames_required=\"" + vs_frames + "\" sprint_vertical_limit_px=\"" + vs_vertical_tol + "\" "
-            "initial_search_max_yaw_rad=\"" + vs_first_yaw_range + "\" data_timeout=\"" + vs_data_timeout + "\" "
-            "search_yaw_rate=\"" + vs_search_rate + "\" "
-            "lock_confirmation_frames=\"" + vs_lock_frames + "\" sprint_confirmation_frames=\"" + vs_sprint_frames + "\" "
-            "min_tracking_after_lock_sec=\"" + vs_min_track + "\" "
-            "enforce_pursuit_range=\"" + vs_enforce_range + "\" "
-            "max_pursuit_distance_m=\"" + vs_pursuit_max + "\" "
-            "sprint_buffer_m=\"" + vs_sprint_buffer + "\" "
-            "near_contact_verify_enabled=\"" + vs_near_enabled + "\" "
-            "near_contact_area_ratio=\"" + vs_near_area + "\" "
-            "near_contact_max_x_px=\"" + vs_near_x + "\" "
-            "near_contact_verify_seconds=\"" + vs_near_seconds + "\" "
-            "near_contact_missing_frames=\"" + vs_near_frames + "\"/>\n"
+            "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\"/>\n"
             "          </Parallel>\n"
-            "      </Timeout>\n";
-        if (postcheck_enabled) {
-            // 正常冲刺制动后：确认悬停、爬升、下视独立观察3秒；结果只做反馈。
-            xml +=
-                "      <StableHover speed_threshold=\"0.16\" settle_time=\"0.90\" timeout=\"9.0\"/>\n"
-                "      <PrecisionMove height=\"" + std::to_string(postcheck_height) + "\"/>\n"
-                "      <BalloonObserve mode=\"down\" object_name=\"" + balloon_name + "\" confidence_threshold=\"0.75\" "
-                "timeout=\"" + std::to_string(postcheck_seconds) + "\" observe_full_duration=\"true\"/>\n";
-        }
-        return xml;
+            "        </Timeout>\n"
+            "      </ForceSuccess>\n";
     }
     
     // ---- land ----
     if (cmd == "land") {
         std::string ret_pos = getStr("land/return_pos", "0.0;0.0;0.5");
         double ret_yaw = getDbl("land/return_yaw", 0.0);
-        std::string safe = getStr("land/return_safe_pos", "0.0;0.0;1.0");
-        // 用实测位置差分做稳定速度门控，替换无反馈的固定延时。
-        std::string hold_speed = std::to_string(getDbl("land/stable_speed_mps", 0.16));
-        std::string hold_time = std::to_string(getDbl("land/stable_time_sec", 0.9));
-        std::string hold_timeout = std::to_string(getDbl("land/stable_timeout_sec", 9.0));
         return
-            "      <!-- 打击后先BRAKE到实际速度足够小，再HOLD稳定，之后才进入Ego返航 -->\n"
-            "      <StableHover speed_threshold=\"" + hold_speed + "\" settle_time=\"" + hold_time + "\" timeout=\"" + hold_timeout + "\"/>\n"
-            "      <!-- Ego局部规划返航到起点上方 -->\n"
-            "      <Timeout msec=\"90000\"><PlanningControl goal=\"" + safe + "\"/></Timeout>\n"
-            "      <!-- 精准移动到降落准备点 -->\n"
-            "      <PrecisionMove goal=\"" + ret_pos + "\" yaw=\"" + std::to_string(ret_yaw) + "\"/>\n"
+            "      <!-- 返回起点 -->\n"
+            "      <GoTo goal=\"" + ret_pos + "\" yaw=\"" + std::to_string(ret_yaw) + "\"/>\n"
+            "      <!-- 降落 -->\n"
             "      <Land/>\n";
     }
     

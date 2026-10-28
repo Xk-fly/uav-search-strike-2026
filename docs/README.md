@@ -1,5 +1,8 @@
 # 项目知识库入口（docs/README.md）
 
+> **2026-10-28 当前恢复分支说明：** 本分支 `codex/restore-official-flight` 的整个 `src/` 恢复为 `official-demo-baseline @ 2c0fe57`，启动脚本仅保留 GPUFree SDK 路径修复；下文开发历史不代表此恢复分支正在使用新增控制逻辑。云端编译/飞行仍待验证，操作步骤与速度差异见 [OFFICIAL_FLIGHT_RESTORE_20261028.md](OFFICIAL_FLIGHT_RESTORE_20261028.md)。原 `dev` 功能版本仍保留。
+
+
 > 这套文档是 ChatGPT、Codex 和用户本人共同使用的长期项目记忆。GitHub Private 仓库中的版本是跨对话、跨电脑、跨服务器的主要知识来源。
 
 ## 1. 推荐阅读顺序

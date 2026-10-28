@@ -234,15 +234,8 @@ class ObjectDetectionColorNode:
         self.bridge = None  # 不再使用 cv_bridge（Boost.Python 版本冲突）
 
         # 控制标志
-        # 前视默认开启；下视实例仅在回退扫描时通过控制topic开启推理。
-        self._detection_enabled = bool(rospy.get_param('~initially_enabled', True))
-        self.source_id = int(rospy.get_param('~source_id', 0))
-        self.publish_empty = bool(rospy.get_param('~publish_empty', False))
-        self.preview_when_disabled = bool(rospy.get_param('~preview_when_disabled', False))
-        ns = rospy.get_param('~param_namespace', 'object_detection')
-        self.show_visualization = rospy.get_param(f'/{ns}/visualization/show_window', False)
-        self.window_name = rospy.get_param(
-            f'/{ns}/visualization/window_name', 'Detection + Color')
+        self._detection_enabled = True
+        self.show_visualization = rospy.get_param('/object_detection/visualization/show_window', False)
         self._first_image_received = False
         self._cached_balloon_centers = {}
 
@@ -338,14 +331,6 @@ class ObjectDetectionColorNode:
             self._first_image_received = True
 
         if not self._detection_enabled:
-            # 下视推理关闭时仍预览原始视频，不运行YOLO也不向前视/objects写数据。
-            if self.preview_when_disabled and self.show_visualization:
-                try:
-                    raw = _ros_image_to_numpy(msg)
-                    view = raw if self.config.is_simulation else raw[:, :, ::-1]
-                    self._visualize(view, None, 0.0)
-                except Exception as exc:
-                    rospy.logwarn_throttle(5.0, f"Down camera preview error: {exc}")
             return
 
         # 转换图像（使用纯 NumPy，避免 Boost.Python 版本不兼容问题）
@@ -367,11 +352,6 @@ class ObjectDetectionColorNode:
             objects_msg = self._process_detections(detections, image_bgr, msg.header)
             self.objects_pub.publish(objects_msg)
             rospy.logdebug(f"Detected {len(detections)} objects")
-        elif self.publish_empty:
-            empty = Objects()
-            empty.header = msg.header
-            empty.source_id = self.source_id
-            self.objects_pub.publish(empty)
 
         processing_time_ms = (time.time() - start_time) * 1000.0
 
@@ -383,7 +363,7 @@ class ObjectDetectionColorNode:
     def _process_detections(self, detections, image_bgr, header) -> Objects:
         objects_msg = Objects()
         objects_msg.header = header
-        objects_msg.source_id = self.source_id
+        objects_msg.source_id = 0
 
         for det in detections:
             x1, y1, x2, y2, conf, cls_id = det
@@ -488,11 +468,11 @@ class ObjectDetectionColorNode:
 
         try:
             if not hasattr(self, '_window_created'):
-                cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-                cv2.resizeWindow(self.window_name, 640, 480)
+                cv2.namedWindow('Detection + Color', cv2.WINDOW_NORMAL)
+                cv2.resizeWindow('Detection + Color', 640, 480)
                 self._window_created = True
 
-            cv2.imshow(self.window_name, img_vis_rgb)
+            cv2.imshow('Detection + Color', img_vis_rgb)
             cv2.waitKey(2)
         except Exception as e:
             rospy.logwarn_throttle(5.0, f"Display error: {e}")
