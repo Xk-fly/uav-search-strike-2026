@@ -22,7 +22,7 @@
       <!-- 7. 返回规划终点 -->
       <GoTo goal="{planning_end_pos}"/>
       <!-- 8. 反向穿过方框 -->
-      <PlanningControl goal="{frame_center}"/>
+      <PlanningControl goal="{frame_center}" wait_before_start="true" wait_for_stop="true"/>
       <!-- 9. 机体系前进20cm -->
       <GoTo goal="0.5;0.0;0.0" frame="1"/>
       <!-- 9.5 掉头朝向C区（从yaw≈π转到yaw=0，面向+x方向） -->

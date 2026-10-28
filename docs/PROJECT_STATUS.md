@@ -1,13 +1,14 @@
 # 项目状态与对话交接（PROJECT_STATUS.md）
 
-## 2026-10-28 当前进展：Ego 净空小幅调整，待云端验证
+## 2026-10-28 当前进展：反穿框停稳交接补丁，待云端编译与实飞
 
-- 当前分支：`codex/restore-official-flight`。恢复版本已编译并实飞；用户确认起飞、首次穿框、ArUco 和反穿框正常，赴 A 桨叶擦框、冲刺后穿模仍存在。
-- 本次仅修改 `FS-J310_Param.xml`：`grid_map/obstacles_inflation: 0.25→0.30 m`；`optimization/dist0: 0.10→0.15 m`。后者是轨迹优化的软间距目标，不是物理碰撞半径，也不保证固定最小净空。
-- 官方速度、加速度及冲刺/返航逻辑保持原样；用户决定本轮暂不处理问题二。原 `dev` 功能版本保留，`main`、`official-demo-baseline` 不动。
-- 本地检查 XML 及源码差异；未在 Windows 执行 ROS 仿真。参数文件修改无需重新编译，必须重启 Ego/完整仿真。
-- 云端：在该分支 `git pull --ff-only`，`source devel/setup.bash`，按已跑通的 PX4/RflySim/MAVROS 前置流程运行 `./sim_env_start.sh`；启动后检查 `/ego_planner_node/grid_map/obstacles_inflation=0.30`、`/ego_planner_node/optimization/dist0=0.15`、`/ego_planner_node/manager/max_vel=0.3`。
-- 验收：正反穿框仍正常，赴 A 的桨盘不擦框、规划无卡住；检查 `/cloud_registered` 与 `/grid_map/occupancy_inflate` 中框边是否存在。异常反馈参数输出、出问题的阶段和 Ego 日志，必要时提供该段 bag。
+- 当前分支：`codex/restore-official-flight`，基于 `88f0098`。该版本单次实测赴 A 无碰撞，反穿框右偏约0.21m且轻微穿模，证据见 `DEBUG_LOG.md`。
+- 本轮修改：`planning_control.cpp/.h` 增加可选的接管前、到达后停稳门控；`bt_ros.cpp` 和四份 `full_competition*.xml` 仅在反穿框启用。原有航点、两段机体系 GoTo、官方速度与气球逻辑保留。
+- 停稳判据：MAVROS 三维速度模长≤0.12m/s，连续0.5s；0.12是完成判据，不是飞行限速。重复/过期/无效数据不能完成门控；允许最多0.1s的消息时钟领先，用接收时间计算持续时长。10s超时则保持位置并返回FAILURE。
+- Ego 膨胀0.30m、`dist0=0.15m` 保持；规划和点云继续使用既有真值坐标系。两路里程计坐标轴不同，不能直接替换整个 odom 话题。Ego 估速、全程 Ego 穿框、地图保留和实际跟踪误差保护仍待后续处理。
+- 本地已检查门控函数语法（消息/时间/锁使用替身）及静态/动态 BT XML、源码差异；**未完成 ROS 全量编译和仿真**。本轮涉及 C++，云端必须重新编译，并重启任务节点/完整仿真。
+- 云端：确认处于本分支，依次执行 `git pull --ff-only`、`./build.sh`；编译成功后 `source devel/setup.bash`，按已跑通的 PX4/RflySim/MAVROS 前置流程启动 `./sim_env_start.sh`。
+- 验收：日志依次出现 `Holding before Ego takeover`、`Actual stop verified`、`Holding endpoint` 和导航完成；反穿前后确有持续悬停，无 `Stop gate timed out`。检查 `/mavros/local_position/odom`、`/planning/pos_cmd`、`/mavros/setpoint_raw/local`，回归首次穿框、ArUco、反穿框与赴 A。仍右偏/擦框、超时或卡住时，反馈阶段、任务日志及包含点云/膨胀地图的 bag；本补丁不代表碰撞已解决。
 - 用户文档偏好见 `AGENTS.md` 第 10 节。上次实测摘要见 [OFFICIAL_FLIGHT_ANALYSIS_20261028.md](OFFICIAL_FLIGHT_ANALYSIS_20261028.md)，恢复过程见 [OFFICIAL_FLIGHT_RESTORE_20261028.md](OFFICIAL_FLIGHT_RESTORE_20261028.md)。以下为历史记录。
 
 > **2026-10-16 最新状态提示：本文件主体是 2026-09-16 的历史交接快照。当前 L40 克隆实例上已观察到官方 Demo 六步完整执行。最新验收请优先阅读 [BASELINE_20261016.md](BASELINE_20261016.md)、[HANDOFF_20261016.md](HANDOFF_20261016.md)；多次穿模、气球真实命中未验证，见 [ISSUES_20261016.md](ISSUES_20261016.md)。**

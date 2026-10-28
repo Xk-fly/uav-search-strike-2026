@@ -290,7 +290,7 @@ std::string commandToXmlNode(const std::string& command) {
             "      <!-- 返回规划终点 -->\n"
             "      <GoTo goal=\"{planning_end_pos}\"/>\n"
             "      <!-- 反向穿越方框 -->\n"
-            "      <PlanningControl goal=\"{frame_center}\"/>\n"
+            "      <PlanningControl goal=\"{frame_center}\" wait_before_start=\"true\" wait_for_stop=\"true\" stop_speed_tolerance=\"0.12\" stop_settle_time=\"0.5\"/>\n"
             "      <!-- 机体系前进 -->\n"
             "      <GoTo goal=\"" + body_fwd + "\" frame=\"1\"/>\n"
             "      <!-- 掉头朝向气球区域 -->\n"

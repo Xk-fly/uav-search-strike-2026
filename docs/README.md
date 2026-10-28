@@ -1,6 +1,6 @@
 # 项目知识库入口（docs/README.md）
 
-> **2026-10-28 最新进展：** 在 `codex/restore-official-flight` 官方速度恢复版上，仅调整 Ego 膨胀 `0.25→0.30 m`、优化间距 `dist0: 0.10→0.15 m`，待云端回归穿框及赴 A 净空；冲刺后穿模本轮暂缓。验证步骤见 [PROJECT_STATUS.md](PROJECT_STATUS.md)，上次实测摘要见 [OFFICIAL_FLIGHT_ANALYSIS_20261028.md](OFFICIAL_FLIGHT_ANALYSIS_20261028.md)。文档简洁偏好已写入 `AGENTS.md`。
+> **2026-10-28 最新进展：** `codex/restore-official-flight` 的0.30/0.15净空参数单次实测赴 A 无碰撞，反穿框仍右偏。本轮仅增加反穿框接管前/到达后的实际停稳门控，保留官方速度与原路线，需云端重新编译和实飞。Ego 估速、全程穿框及冲刺后穿模仍待处理。验证步骤见 [PROJECT_STATUS.md](PROJECT_STATUS.md)，文档简洁偏好见 `AGENTS.md`。
 
 > 这套文档是 ChatGPT、Codex 和用户本人共同使用的长期项目记忆。GitHub Private 仓库中的版本是跨对话、跨电脑、跨服务器的主要知识来源。
 
