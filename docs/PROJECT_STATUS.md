@@ -1,7 +1,14 @@
 # 项目状态与对话交接（PROJECT_STATUS.md）
 
-> **2026-10-28 当前恢复分支说明：** 本分支 `codex/restore-official-flight` 的整个 `src/` 恢复为 `official-demo-baseline @ 2c0fe57`，启动脚本仅保留 GPUFree SDK 路径修复；下文开发历史不代表此恢复分支正在使用新增控制逻辑。云端编译/飞行仍待验证，操作步骤与速度差异见 [OFFICIAL_FLIGHT_RESTORE_20261028.md](OFFICIAL_FLIGHT_RESTORE_20261028.md)。原 `dev` 功能版本仍保留。
+## 2026-10-28 当前进展：Ego 净空小幅调整，待云端验证
 
+- 当前分支：`codex/restore-official-flight`。恢复版本已编译并实飞；用户确认起飞、首次穿框、ArUco 和反穿框正常，赴 A 桨叶擦框、冲刺后穿模仍存在。
+- 本次仅修改 `FS-J310_Param.xml`：`grid_map/obstacles_inflation: 0.25→0.30 m`；`optimization/dist0: 0.10→0.15 m`。后者是轨迹优化的软间距目标，不是物理碰撞半径，也不保证固定最小净空。
+- 官方速度、加速度及冲刺/返航逻辑保持原样；用户决定本轮暂不处理问题二。原 `dev` 功能版本保留，`main`、`official-demo-baseline` 不动。
+- 本地检查 XML 及源码差异；未在 Windows 执行 ROS 仿真。参数文件修改无需重新编译，必须重启 Ego/完整仿真。
+- 云端：在该分支 `git pull --ff-only`，`source devel/setup.bash`，按已跑通的 PX4/RflySim/MAVROS 前置流程运行 `./sim_env_start.sh`；启动后检查 `/ego_planner_node/grid_map/obstacles_inflation=0.30`、`/ego_planner_node/optimization/dist0=0.15`、`/ego_planner_node/manager/max_vel=0.3`。
+- 验收：正反穿框仍正常，赴 A 的桨盘不擦框、规划无卡住；检查 `/cloud_registered` 与 `/grid_map/occupancy_inflate` 中框边是否存在。异常反馈参数输出、出问题的阶段和 Ego 日志，必要时提供该段 bag。
+- 用户文档偏好见 `AGENTS.md` 第 10 节。上次实测摘要见 [OFFICIAL_FLIGHT_ANALYSIS_20261028.md](OFFICIAL_FLIGHT_ANALYSIS_20261028.md)，恢复过程见 [OFFICIAL_FLIGHT_RESTORE_20261028.md](OFFICIAL_FLIGHT_RESTORE_20261028.md)。以下为历史记录。
 
 > **2026-10-16 最新状态提示：本文件主体是 2026-09-16 的历史交接快照。当前 L40 克隆实例上已观察到官方 Demo 六步完整执行。最新验收请优先阅读 [BASELINE_20261016.md](BASELINE_20261016.md)、[HANDOFF_20261016.md](HANDOFF_20261016.md)；多次穿模、气球真实命中未验证，见 [ISSUES_20261016.md](ISSUES_20261016.md)。**
 
