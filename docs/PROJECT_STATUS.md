@@ -1,5 +1,17 @@
 # 项目状态与对话交接（PROJECT_STATUS.md）
 
+## 2026-10-29 红球末端净空与制动调整（待云端编译实飞）
+
+- 实测：`flight_20261029_210420_291765_0.bag`（206.54秒/37447条）。139.33秒偏心约84px、机体高约0.27m时冲刺；140.19秒丢球后定点制动，150.20秒因停稳超时返回FAILURE，未进入ReturnHome。详情见DEBUG_LOG。
+- 共用伺服：冲刺横向误差允许±80px（640像宽），不要求每个BT周期连续检测；保留8%面积和有效检测要求。高度下限目标0.40m，提前收住下降，允许0.03m门控容差，过低时先回升。可在 `llm_mission.launch` 调整三项新参数；官方接近/冲刺及Ego速度参数保持。
+- 右墙检查仅红球启用：读取 `/cloud_registered` 的world点云，在前方1.2m、机体上方0.35至1.0m的墙面带估计右侧净空，避开正常低位目标/地面；低于0.50m时暂停前进，按净空误差向左纠偏，解除后继续跟踪。新鲜点云不足时不前冲。它是局部右墙保护，尚未实测，不能代表全向避障；本轮不增加下视复核。
+- 三色BalloonBrake：先持续零机体速度，速度≤0.12m/s连续0.5s后捕获实际停点和航向，再进入原返航；仅该节点等待上限10→15秒，反穿框门控不变。冲刺丢球完成判据保留；墙/低高度打断冲刺后回到接近，不宣称命中。原50秒任务上限、1.2秒冲刺上限保留。
+- 录包自动加入 `/visual_servo/right_wall_clearance`（-1表示当前观察带无候选墙点）、`/flight_bag/version`、`/flight_bag/cloud_sparse`（1Hz、0.20m抽稀、最多2000点，不参与控制）。仍保存到 `~/catkin_ws/Bag`，LZ4/64MB分卷，不录原始图像/全量点云；Ctrl+C由包装脚本正常结束rosbag及辅助节点。
+- 修改：`visual_servo.cpp/.h`、`planning_control.cpp/.h`、`bt_ros.cpp`、LLM launch/五份任务XML、`record_flight_bag.sh`、`sim_env_start.sh`，新增 `flight_bag_context.py`。本地替身C++语法与32个行为断言、三色生成XML、稀疏点云和录包退出模拟通过；尚未ROS完整编译/实飞。
+- 版本：修改前 `checkpoint/20261029-before-red-wall-brake` → `ad53948`；本轮测试标签 `test/20261029-red-wall-brake-v1`，均保留于 `codex/restore-official-flight` 的历史中。
+- 云端停止旧任务后执行 `git pull --ff-only && ./build.sh`，成功后 `source devel/setup.bash`，按原前置流程启动 `./sim_env_start.sh`。先测红球：应有宽松对中后SPRINT、必要时Wall clearance纠偏、`BRAKE: zero velocity before position hold`→`BRAKE complete`→ReturnHome（control_yaw=0）→Land。
+- 检查上述三个新topic、`/mavros/setpoint_raw/local`、`/mission_result`。如果卡在对中/墙侧/制动，反馈对应日志与本次所有 `Bag/flight_*.bag` 分卷；结束等 `.bag.active` 变成 `.bag` 再下载，不需要图表。
+
 ## 2026-10-29 冲刺丢球判据与返航两处修复（待云端编译实飞）
 
 - 最新bag证据见 `DEBUG_LOG.md`：固定位置搜索正常；远距丢球误触发返航，ReturnHome接管规划yaw后猛转，Ego急停又因缺少目标标识被拒收。本轮只修这三处。

@@ -37,6 +37,7 @@ PortsList PlanningControl::providedPorts() {
              InputPort<bool>("control_yaw", false, "是否控制偏航角"),
              InputPort<bool>("wait_before_start", false, "发规划目标前等待实际停稳"),
              InputPort<bool>("stop_only", false, "仅制动并等待停稳，不发送规划目标"),
+             InputPort<bool>("brake_with_velocity", false, "气球撞击后先用零速度制动，停稳再锁定位置"),
              InputPort<bool>("require_goal_match", false, "仅执行当前目标对应的规划指令"),
              InputPort<bool>("wait_for_stop", false, "到达后等待实际停稳"),
              InputPort<double>("stop_speed_tolerance", 0.12, "停稳判据(m/s)，不是飞行限速"),
@@ -97,7 +98,7 @@ bool PlanningControl::isStoppedAndSettled() {
 
 bool PlanningControl::settleTimedOut() const {
     if ((ros::Time::now() - settle_started_at_).toSec() <= stop_timeout_) return false;
-    ROS_ERROR("[%s]: Stop gate timed out after %.1f s; holding position, no handoff.",
+    ROS_ERROR("[%s]: Stop gate timed out after %.1f s; no handoff.",
               name().c_str(), stop_timeout_);
     return true;
 }
@@ -161,6 +162,7 @@ NodeStatus PlanningControl::onStart() {
     control_yaw = yaw_res.value();
     wait_before_start_ = getInput<bool>("wait_before_start").value();
     stop_only_ = getInput<bool>("stop_only").value();
+    brake_with_velocity_ = stop_only_ && getInput<bool>("brake_with_velocity").value();
     require_goal_match_ = getInput<bool>("require_goal_match").value();
     if (stop_only_) wait_before_start_ = true;
     wait_for_stop_ = getInput<bool>("wait_for_stop").value();
@@ -189,9 +191,11 @@ NodeStatus PlanningControl::onStart() {
     entry_hold_pos_ = fcu_odom_ptr->pose.pose.position;
     if (wait_before_start_) {
         beginSettling();
-        publishPosition(entry_hold_pos_, initial_yaw_);
+        if (brake_with_velocity_) publishVelocityWithYawRate(0, 0, 0, 0);
+        else publishPosition(entry_hold_pos_, initial_yaw_);
         ROS_INFO("[%s]: %s; waiting for actual stop.", name().c_str(),
-                 stop_only_ ? "BRAKE: holding fixed position" : "Holding before Ego takeover");
+                 brake_with_velocity_ ? "BRAKE: zero velocity before position hold" :
+                 (stop_only_ ? "BRAKE: holding fixed position" : "Holding before Ego takeover"));
         return NodeStatus::RUNNING;
     }
 
@@ -212,11 +216,17 @@ NodeStatus PlanningControl::onStart() {
 
 NodeStatus PlanningControl::onRunning() {
     if (wait_before_start_) {
-        publishPosition(entry_hold_pos_, initial_yaw_);
+        if (brake_with_velocity_) publishVelocityWithYawRate(0, 0, 0, 0);
+        else publishPosition(entry_hold_pos_, initial_yaw_);
         if (settleTimedOut()) return NodeStatus::FAILURE;
         if (!isStoppedAndSettled()) return NodeStatus::RUNNING;
         wait_before_start_ = false;
         if (stop_only_) {
+            if (brake_with_velocity_) {
+                entry_hold_pos_ = fcu_odom_ptr->pose.pose.position;
+                initial_yaw_ = PoseUtils::getYawFromQuat(fcu_odom_ptr->pose.pose.orientation);
+                publishPosition(entry_hold_pos_, initial_yaw_);
+            }
             ROS_INFO("[%s]: BRAKE complete: actual stop verified.", name().c_str());
             return NodeStatus::SUCCESS;
         }

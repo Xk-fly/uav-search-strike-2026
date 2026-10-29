@@ -11,8 +11,11 @@
  ******************************************************************************/
 #include "nodes/action/visual_servo.h"
 #include "utils/pose_utils.h"
+#include <sensor_msgs/point_cloud2_iterator.h>
+#include <std_msgs/Float32.h>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 
 VisualServo::VisualServo(const std::string& name, const NodeConfig& config)
@@ -51,7 +54,11 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("approach_area_threshold", 0.08, "触发冲刺的面积占比"),
              InputPort<double>("center_tolerance", 0.15, "对齐判定区域比例"),
              InputPort<double>("search_yaw_rate", 0.3, "固定位置搜索的转向速度(rad/s)"),
-             InputPort<double>("hit_lost_time", 0.25, "连续丢球时间；仅冲刺中丢球视作完成(s)") };
+             InputPort<double>("hit_lost_time", 0.25, "连续丢球时间；仅冲刺中丢球视作完成(s)"),
+             InputPort<double>("min_servo_height", 0.40, "末端伺服机体最低高度(m)"),
+             InputPort<double>("sprint_center_px", 80.0, "冲刺前最大横向像素误差"),
+             InputPort<bool>("avoid_right_wall", false, "红球末端启用右侧墙体净空检查"),
+             InputPort<double>("right_wall_margin", 0.50, "右侧墙体最小净空(m)") };
 }
 
 NodeStatus VisualServo::onStart() {
@@ -75,6 +82,20 @@ NodeStatus VisualServo::onStart() {
     center_tolerance_ = getInput<double>("center_tolerance").value();
     search_yaw_rate_ = getInput<double>("search_yaw_rate").value();
     hit_lost_time_ = getInput<double>("hit_lost_time").value();
+    min_servo_height_ = getInput<double>("min_servo_height").value();
+    sprint_center_px_ = getInput<double>("sprint_center_px").value();
+    avoid_right_wall_ = getInput<bool>("avoid_right_wall").value();
+    right_wall_margin_ = getInput<double>("right_wall_margin").value();
+    {
+        std::lock_guard<std::mutex> lock(wall_mutex_);
+        wall_cloud_received_at_ = ros::Time(0);
+        right_wall_clearance_ = std::numeric_limits<double>::infinity();
+    }
+    if (avoid_right_wall_) {
+        auto nh = mct->getROSHandle();
+        wall_clearance_pub_ = nh->advertise<std_msgs::Float32>("/visual_servo/right_wall_clearance", 10);
+        wall_cloud_sub_ = nh->subscribe("/cloud_registered", 1, &VisualServo::wallCloudCallback, this);
+    }
     
     // 初始化状态机
     current_state_ = APPROACHING;  // 直接进入边飞边对齐模式（气球是移动目标）
@@ -95,6 +116,8 @@ NodeStatus VisualServo::onStart() {
              name().c_str(), k_p_yaw_rate_, k_d_yaw_rate_, max_yaw_rate_, deadzone_yaw_);
     ROS_INFO("[%s]: forward_vel=%.2f sprint_vel=%.2f sprint_time=%.1f area_thresh=%.3f",
              name().c_str(), forward_velocity_, sprint_velocity_, sprint_time_, approach_area_threshold_);
+    ROS_INFO("[%s]: min_height=%.2fm sprint_center=%.0fpx right_wall=%d margin=%.2fm",
+             name().c_str(), min_servo_height_, sprint_center_px_, avoid_right_wall_, right_wall_margin_);
     
     return NodeStatus::RUNNING;
 }
@@ -106,6 +129,26 @@ NodeStatus VisualServo::onRunning() {
     ros::Time now = ros::Time::now();
     double dt = (now - prev_time_).toSec();
     if (dt < 0.001) dt = 0.001;
+
+    bool right_wall_near = false;
+    bool wall_cloud_ready = !avoid_right_wall_;
+    double wall_clearance = std::numeric_limits<double>::infinity();
+    if (avoid_right_wall_) {
+        std::lock_guard<std::mutex> lock(wall_mutex_);
+        wall_cloud_ready = !wall_cloud_received_at_.isZero() &&
+            (now - wall_cloud_received_at_).toSec() < 0.5;
+        wall_clearance = right_wall_clearance_;
+        right_wall_near = wall_cloud_ready && wall_clearance < right_wall_margin_;
+    }
+    if ((!wall_cloud_ready || right_wall_near) && current_state_ == SPRINTING) {
+        current_state_ = APPROACHING;
+        ROS_WARN_THROTTLE(1.0, "[%s]: Right wall near during SPRINT; stopping forward motion.", name().c_str());
+    }
+    if (current_state_ == SPRINTING &&
+        fcu_odom_ptr->pose.pose.position.z < min_servo_height_ - 0.05) {
+        current_state_ = APPROACHING;
+        ROS_WARN_THROTTLE(1.0, "[%s]: Low height during SPRINT; stopping forward motion.", name().c_str());
+    }
 
     if (has_ever_received_data_ && isTargetLost()) {
         const double unseen_time = (now - last_valid_detection_time_).toSec();
@@ -120,6 +163,7 @@ NodeStatus VisualServo::onRunning() {
         current_state_ = APPROACHING;
         align_stable_frames_ = 0;
         search_pos_ = fcu_odom_ptr->pose.pose.position;
+        search_pos_.z = std::max(search_pos_.z, min_servo_height_);
         search_yaw_ = PoseUtils::getYawFromQuat(fcu_odom_ptr->pose.pose.orientation);
         ROS_WARN("[%s]: Target lost before SPRINT (%.2fs); holding position and searching.",
                  name().c_str(), unseen_time);
@@ -146,6 +190,21 @@ NodeStatus VisualServo::onRunning() {
     // PD 控制计算
     double yaw_rate = computeYawRate(err_x, dt);
     double vz = computeVz(err_y, dt);
+    const double height = fcu_odom_ptr->pose.pose.position.z;
+    // 越靠近高度下限，越早收住下降；只约束指令，不修改原速度上限。
+    vz = std::max(vz, std::clamp(2.0 * (min_servo_height_ - height), -max_vz_, max_vz_));
+    if (height < min_servo_height_ - 0.03) {
+        ROS_WARN_THROTTLE(1.0, "[%s]: Low servo height %.2fm; correcting upward.", name().c_str(), height);
+    }
+    // MAVROS机体系y正方向为左；净空不足时只侧移，不继续朝墙前进。
+    if (!wall_cloud_ready || right_wall_near) {
+        const double vy = right_wall_near ? std::min(forward_velocity_, right_wall_margin_ - wall_clearance + 0.10) : 0.0;
+        publishVelocityWithYawRate(0, vy, vz, 0);
+        prev_time_ = now;
+        ROS_WARN_THROTTLE(1.0, "[%s]: Wall clearance: ready=%d right=%.2fm; holding forward, left correction=%.2f.",
+                          name().c_str(), wall_cloud_ready, wall_clearance, vy);
+        return NodeStatus::RUNNING;
+    }
     
     // 更新微分状态
     prev_time_ = now;
@@ -179,6 +238,15 @@ NodeStatus VisualServo::onRunning() {
             double align_ratio = std::max(0.0, 1.0 - std::abs(err_x) / (img_w_ * 0.3));
             double vx = forward_velocity_ * align_ratio;
             
+            const bool close_to_target = current_ratio >= approach_area_threshold_;
+            const bool aligned_for_sprint = std::abs(err_x) <= sprint_center_px_ &&
+                height >= min_servo_height_ - 0.03;
+            const bool ready_to_sprint = target_detected && close_to_target && aligned_for_sprint;
+            if ((close_to_target && !aligned_for_sprint) || height < min_servo_height_ - 0.05) {
+                vx = 0.0;
+                ROS_WARN_THROTTLE(1.0, "[%s]: Holding forward motion: err_x=%.0fpx height=%.2fm wall=%d.",
+                                  name().c_str(), err_x, height, right_wall_near);
+            }
             publishVelocityWithYawRate(vx, 0, vz, yaw_rate);
             
             // 对齐偏差过大 → 回到 ALIGN
@@ -191,7 +259,7 @@ NodeStatus VisualServo::onRunning() {
             }
             
             // 当前仍见球且面积达阈值才冲刺，不能用丢球前的旧面积触发。
-            if (target_detected && current_ratio >= approach_area_threshold_) {
+            if (ready_to_sprint) {
                 current_state_ = SPRINTING;
                 sprint_start_time_ = ros::Time::now();
                 ROS_INFO("[%s]: Area %.1f%% >= %.1f%% -> SPRINT! (sprint_vel=%.2f, time=%.1fs)", 
@@ -227,6 +295,36 @@ NodeStatus VisualServo::onRunning() {
     }
     
     return NodeStatus::RUNNING;
+}
+
+void VisualServo::wallCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+    if (msg->header.frame_id != "world") return;
+    const auto& pose = fcu_odom_ptr->pose.pose;
+    const double yaw = PoseUtils::getYawFromQuat(pose.orientation);
+    const double forward_x = std::cos(yaw);
+    const double forward_y = std::sin(yaw);
+    double clearance = std::numeric_limits<double>::infinity();
+    sensor_msgs::PointCloud2ConstIterator<float> x(*msg, "x"), y(*msg, "y"), z(*msg, "z");
+    for (; x != x.end(); ++x, ++y, ++z) {
+        const double dx = *x - pose.position.x;
+        const double dy = *y - pose.position.y;
+        const double ahead = forward_x * dx + forward_y * dy;
+        const double right = forward_y * dx - forward_x * dy;
+        // 取机体上方墙面，避开地面、车体和正常低位气球；不把正前方球体当墙。
+        const double above = *z - pose.position.z;
+        if (ahead > -0.15 && ahead < 1.2 && right > 0.05 &&
+            above > 0.35 && above < 1.0) {
+            clearance = std::min(clearance, right);
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(wall_mutex_);
+        right_wall_clearance_ = clearance;
+        wall_cloud_received_at_ = ros::Time::now();
+    }
+    std_msgs::Float32 sample;
+    sample.data = std::isfinite(clearance) ? clearance : -1.0f;
+    wall_clearance_pub_.publish(sample);
 }
 
 // =====================================================================

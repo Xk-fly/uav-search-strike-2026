@@ -20,7 +20,7 @@
                 pixel_target="{balloon_pixel}" />
         
             <!-- 视觉伺服：VX+VZ+yaw_rate PD控制 -->
-            <VisualServo
+            <VisualServo avoid_right_wall="true"
                 pixel_target="{balloon_pixel}"
                 k_p_yaw_rate="0.003"
                 k_d_yaw_rate="0.008"
@@ -33,7 +33,7 @@
           </Parallel>
         </Timeout>
       </ForceSuccess>
-      <PlanningControl name="BalloonBrake" stop_only="true"/>
+      <PlanningControl name="BalloonBrake" stop_only="true" brake_with_velocity="true" stop_timeout="15.0"/>
       
       <!-- 4. 返回起点 -->
       <GoTo face_goal="0.0;0.0;1.0"/>

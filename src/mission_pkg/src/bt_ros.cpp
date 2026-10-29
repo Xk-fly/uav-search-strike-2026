@@ -330,6 +330,10 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 1.0));
         std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 1.5));
         std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 1.2));
+        std::string min_height = std::to_string(getDbl("visual_servo/min_servo_height", 0.40));
+        std::string center_px = std::to_string(getDbl("visual_servo/sprint_center_px", 80.0));
+        std::string wall_margin = std::to_string(getDbl("visual_servo/right_wall_margin", 0.50));
+        std::string wall_check = color == "red" ? "true" : "false";
         std::string search_timeout = std::to_string((int)getDbl("visual_servo/search_timeout_ms", 50000));
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
@@ -349,12 +353,13 @@ std::string commandToXmlNode(const std::string& command) {
             "            <VisualServo pixel_target=\"{balloon_pixel}\" "
             "k_p_yaw_rate=\"" + vs_k_p_yaw + "\" k_d_yaw_rate=\"" + vs_k_d_yaw + "\" "
             "k_p_vz=\"" + vs_k_p_vz + "\" k_d_vz=\"" + vs_k_d_vz + "\" "
-            "approach_area_threshold=\"" + vs_area_th + "\" "
+            "approach_area_threshold=\"" + vs_area_th + "\" avoid_right_wall=\"" + wall_check + "\" "
+            "min_servo_height=\"" + min_height + "\" sprint_center_px=\"" + center_px + "\" right_wall_margin=\"" + wall_margin + "\" "
             "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\"/>\n"
             "          </Parallel>\n"
             "        </Timeout>\n"
             "      </ForceSuccess>\n"
-            "      <PlanningControl name=\"BalloonBrake\" stop_only=\"true\"/>\n";
+            "      <PlanningControl name=\"BalloonBrake\" stop_only=\"true\" brake_with_velocity=\"true\" stop_timeout=\"15.0\"/>\n";
     }
     
     // ---- land ----

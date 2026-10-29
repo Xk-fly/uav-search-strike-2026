@@ -104,6 +104,9 @@
     <param name="visual_servo/sprint_velocity"          value="1.5"   type="double"/>
     <param name="visual_servo/sprint_time"              value="1.2"   type="double"/>
     <param name="visual_servo/search_timeout_ms"        value="50000" type="double"/>
+    <param name="visual_servo/min_servo_height"         value="0.40"  type="double"/>
+    <param name="visual_servo/sprint_center_px"         value="80.0"  type="double"/>
+    <param name="visual_servo/right_wall_margin"        value="0.50"  type="double"/>
 
     <!-- 运行任务节点（LLM 模式） -->
     <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">

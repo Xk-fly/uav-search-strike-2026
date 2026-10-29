@@ -74,7 +74,7 @@
         </Timeout>
       </ForceSuccess>
       <!-- 三色共用：实际停稳后再转向，经 Ego 返航 -->
-      <PlanningControl name="BalloonBrake" stop_only="true"/>
+      <PlanningControl name="BalloonBrake" stop_only="true" brake_with_velocity="true" stop_timeout="15.0"/>
       <GoTo face_goal="0.0;0.0;1.0"/>
       <Delay delay_msec="750"><AlwaysSuccess/></Delay>
       <Timeout msec="90000">

@@ -10,6 +10,8 @@
 
 #include "base/drone_action_node.h"
 #include <ros/time.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <mutex>
 
 class VisualServo : public DroneActionNode {
 public:
@@ -35,6 +37,12 @@ private:
     double search_yaw_;
     ros::Time sprint_start_time_;
     int align_stable_frames_;
+    ros::Subscriber wall_cloud_sub_;
+    ros::Publisher wall_clearance_pub_;
+    std::mutex wall_mutex_;
+    ros::Time wall_cloud_received_at_;
+    double right_wall_clearance_;
+    bool avoid_right_wall_;
     
     // 相机参数
     double img_cx_, img_cy_;
@@ -63,6 +71,9 @@ private:
     double center_tolerance_;       // 对齐判定区域比例
     double search_yaw_rate_;        // 搜索模式旋转速度 (rad/s)
     double hit_lost_time_;          // 连续丢球时长；只有冲刺阶段据此结束打击
+    double min_servo_height_;       // 末端伺服最低机体高度
+    double sprint_center_px_;       // 冲刺前允许的横向像素误差
+    double right_wall_margin_;      // 右侧墙体最小净空
     
     // 微分计算用
     double prev_err_x_, prev_err_y_;
@@ -75,6 +86,7 @@ private:
     bool updateTargetData();
     bool isTargetLost();
     bool isCentered() const;
+    void wallCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg);
     
     // PD 控制器
     double computeYawRate(double err_x, double dt);

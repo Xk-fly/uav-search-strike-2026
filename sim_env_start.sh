@@ -5,7 +5,7 @@
 #
 # 启动内容：
 #   0.  roscore                   — ROS 核心
-#       record_flight_bag.sh      — 轻量 rosbag 自动录制到工作空间 Bag/
+#       record_flight_bag.sh      — 轻量 rosbag（含版本、墙侧净空及1Hz稀疏点云）
 #   1.  LLM (mission_once.py)     — 大模型加载（耗时，最先启动）    [独立 xterm]
 #   2.  detection_color.launch    — YOLO 目标检测 + HSV 颜色分类    [独立 xterm]
 #   3.  MAVROS                    — 飞控通信（当前已注释）
@@ -87,7 +87,8 @@ cleanup() {
     echo ""
     echo -e "${RED}正在关闭所有进程...${NC}"
     if [ -n "${BAG_PID:-}" ]; then
-        kill -INT "${BAG_PID}" 2>/dev/null
+        # 后台bash可能继承忽略SIGINT；TERM由录包包装脚本转发为rosbag的INT。
+        kill -TERM "${BAG_PID}" 2>/dev/null
         wait "${BAG_PID}" 2>/dev/null
         echo -e "${GREEN}rosbag 录制已结束，文件位于 ${WS_DIR}/Bag${NC}"
     fi
