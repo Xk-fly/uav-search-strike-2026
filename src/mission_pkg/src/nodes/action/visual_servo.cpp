@@ -3,13 +3,14 @@
  * @brief      Visual Servo 行为树节点 - 三阶段控制（body系 VX+VZ+yaw_rate）
  *
  * @details    三阶段：对齐(ALIGN) -> 靠近(APPROACH) -> 冲刺(SPRINT)
- *             全程使用 publishVelocityWithYawRate（body 坐标系）
+ *             搜索固定位置缓转；见球后使用 publishVelocityWithYawRate（body 坐标系）
  *             控制变量：VX(前进) + VZ(升降) + yaw_rate(偏航角速度)
  *
  * @author     郭定<1604289397@qq.com>
  * @date       2026-03-16
  ******************************************************************************/
 #include "nodes/action/visual_servo.h"
+#include "utils/pose_utils.h"
 #include <algorithm>
 #include <cmath>
 
@@ -49,7 +50,7 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("data_timeout", 1.0, "数据超时 (s)"),
              InputPort<double>("approach_area_threshold", 0.08, "触发冲刺的面积占比"),
              InputPort<double>("center_tolerance", 0.15, "对齐判定区域比例"),
-             InputPort<double>("search_yaw_rate", 0.3, "搜索/弱检测/短暂丢球时的转向上限(rad/s)"),
+             InputPort<double>("search_yaw_rate", 0.3, "固定位置搜索的转向速度(rad/s)"),
              InputPort<double>("hit_lost_time", 0.25, "曾看到目标后连续消失即结束打击(s)") };
 }
 
@@ -84,6 +85,8 @@ NodeStatus VisualServo::onStart() {
     prev_err_x_ = 0.0;
     prev_err_y_ = 0.0;
     prev_time_ = ros::Time::now();
+    search_pos_ = fcu_odom_ptr->pose.pose.position;
+    search_yaw_ = PoseUtils::getYawFromQuat(fcu_odom_ptr->pose.pose.orientation);
     
     updateTargetData();
     
@@ -104,11 +107,14 @@ NodeStatus VisualServo::onRunning() {
     double dt = (now - prev_time_).toSec();
     if (dt < 0.001) dt = 0.001;
     
-    // 从未见球时原地搜索；见球后短暂消失只朝最后方向找回，不继续盲冲。
+    // 搜索保持进入伺服时的位置，只缓慢改变航向；零机体速度不能锁住真值位置。
     if (!has_ever_received_data_) {
-        publishVelocityWithYawRate(0, 0, 0, search_yaw_rate_);
+        search_yaw_ += search_yaw_rate_ * dt;
+        while (search_yaw_ > M_PI) search_yaw_ -= 2 * M_PI;
+        while (search_yaw_ < -M_PI) search_yaw_ += 2 * M_PI;
+        publishPosition(search_pos_, search_yaw_);
         prev_time_ = now;
-        ROS_WARN_THROTTLE(2.0, "[%s]: Searching for target (yaw_rate=%.2f)...",
+        ROS_WARN_THROTTLE(2.0, "[%s]: Fixed-position search (yaw_rate=%.2f)...",
                           name().c_str(), search_yaw_rate_);
         return NodeStatus::RUNNING;
     }
@@ -119,14 +125,6 @@ NodeStatus VisualServo::onRunning() {
                  name().c_str(), unseen_time);
         return NodeStatus::SUCCESS;
     }
-    if (unseen_time > 0.15) {
-        const double last_error = last_target_.center_x - img_cx_;
-        const double turn = std::clamp(-k_p_yaw_rate_ * last_error,
-                                       -search_yaw_rate_, search_yaw_rate_);
-        publishVelocityWithYawRate(0, 0, 0, turn);
-        prev_time_ = now;
-        return NodeStatus::RUNNING;
-    }
     
     // 计算基本量
     double img_area = static_cast<double>(img_w_) * img_h_;
@@ -136,9 +134,6 @@ NodeStatus VisualServo::onRunning() {
     
     // PD 控制计算
     double yaw_rate = computeYawRate(err_x, dt);
-    if (last_target_.confidence < 0.8) {
-        yaw_rate = std::clamp(yaw_rate, -search_yaw_rate_, search_yaw_rate_);
-    }
     double vz = computeVz(err_y, dt);
     
     // 更新微分状态
@@ -279,6 +274,13 @@ void VisualServo::updateTargetData() {
 
     PixelTarget current_target = target_res.value();
     if (current_target.is_detected) {
+        if (!has_ever_received_data_) {
+            // 首次见球不把搜索期间的零误差当成上一帧，避免微分项突跳。
+            const double err_x = current_target.center_x - img_cx_;
+            const double err_y = current_target.center_y - img_cy_;
+            prev_err_x_ = std::copysign(std::max(0.0, std::abs(err_x) - deadzone_yaw_), err_x);
+            prev_err_y_ = std::copysign(std::max(0.0, std::abs(err_y) - deadzone_vz_), err_y);
+        }
         last_target_ = current_target;
         last_valid_detection_time_ = ros::Time::now(); 
         has_ever_received_data_ = true;

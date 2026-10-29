@@ -41,12 +41,12 @@
       <!-- 12. 跟踪并撞击B区气球 -->
       <!-- 超时后 Timeout 返回 FAILURE，ForceSuccess 将其转为 SUCCESS -->
       <ForceSuccess>
-        <Timeout msec="120000">
+        <Timeout msec="50000">
           <Parallel success_count="1" failure_count="1">
             <!-- 持续跟踪：实时计算气球像素坐标 -->
             <TargetTracker 
                 object_name="purple_balloon"
-                confidence_threshold="0.5"
+                confidence_threshold="0.8"
                 pixel_target="{balloon_pixel}" />
             
             <!-- 视觉伺服：VX+VZ+yaw_rate PD控制 -->

@@ -3,7 +3,7 @@
  * @brief      Visual Servo - 三阶段控制（body系 VX+VZ+yaw_rate 控制版）
  * 
  * @details    ALIGN → APPROACH → SPRINT
- *             全程使用 publishVelocityWithYawRate (body 坐标系)
+ *             搜索固定位置缓转；见球后使用 publishVelocityWithYawRate (body 坐标系)
  ******************************************************************************/
 #ifndef VISUAL_SERVO_H
 #define VISUAL_SERVO_H
@@ -31,6 +31,8 @@ private:
     PixelTarget last_target_;
     ros::Time last_valid_detection_time_;
     bool has_ever_received_data_;
+    geometry_msgs::Point search_pos_;
+    double search_yaw_;
     ros::Time sprint_start_time_;
     int align_stable_frames_;
     

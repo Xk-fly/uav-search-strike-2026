@@ -103,7 +103,7 @@
     <param name="visual_servo/forward_velocity"         value="1.0"   type="double"/>
     <param name="visual_servo/sprint_velocity"          value="1.5"   type="double"/>
     <param name="visual_servo/sprint_time"              value="1.2"   type="double"/>
-    <param name="visual_servo/search_timeout_ms"        value="120000" type="double"/>
+    <param name="visual_servo/search_timeout_ms"        value="50000" type="double"/>
 
     <!-- 运行任务节点（LLM 模式） -->
     <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">

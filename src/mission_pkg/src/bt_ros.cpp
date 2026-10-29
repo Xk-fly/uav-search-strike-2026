@@ -330,7 +330,7 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 1.0));
         std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 1.5));
         std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 1.2));
-        std::string search_timeout = std::to_string((int)getDbl("visual_servo/search_timeout_ms", 120000));
+        std::string search_timeout = std::to_string((int)getDbl("visual_servo/search_timeout_ms", 50000));
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
@@ -345,7 +345,7 @@ std::string commandToXmlNode(const std::string& command) {
             "        <Timeout msec=\"" + search_timeout + "\">\n"
             "          <Parallel success_count=\"1\" failure_count=\"1\">\n"
             "            <TargetTracker object_name=\"" + balloon_name + "\" "
-            "confidence_threshold=\"0.5\" pixel_target=\"{balloon_pixel}\"/>\n"
+            "confidence_threshold=\"0.8\" pixel_target=\"{balloon_pixel}\"/>\n"
             "            <VisualServo pixel_target=\"{balloon_pixel}\" "
             "k_p_yaw_rate=\"" + vs_k_p_yaw + "\" k_d_yaw_rate=\"" + vs_k_d_yaw + "\" "
             "k_p_vz=\"" + vs_k_p_vz + "\" k_d_vz=\"" + vs_k_d_vz + "\" "
