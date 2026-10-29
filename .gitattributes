@@ -1,0 +1,2 @@
+/sim_env_start.sh text eol=lf
+/record_flight_bag.sh text eol=lf

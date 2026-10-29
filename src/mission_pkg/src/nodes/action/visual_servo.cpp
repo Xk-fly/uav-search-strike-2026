@@ -49,7 +49,7 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("data_timeout", 1.0, "数据超时 (s)"),
              InputPort<double>("approach_area_threshold", 0.08, "触发冲刺的面积占比"),
              InputPort<double>("center_tolerance", 0.15, "对齐判定区域比例"),
-             InputPort<double>("search_yaw_rate", 0.3, "弱检测/短暂丢球时的转向上限(rad/s)"),
+             InputPort<double>("search_yaw_rate", 0.3, "搜索/弱检测/短暂丢球时的转向上限(rad/s)"),
              InputPort<double>("hit_lost_time", 0.25, "曾看到目标后连续消失即结束打击(s)") };
 }
 
@@ -106,10 +106,10 @@ NodeStatus VisualServo::onRunning() {
     
     // 从未见球时原地搜索；见球后短暂消失只朝最后方向找回，不继续盲冲。
     if (!has_ever_received_data_) {
-        publishVelocityWithYawRate(0, 0, 0, max_yaw_rate_);
+        publishVelocityWithYawRate(0, 0, 0, search_yaw_rate_);
         prev_time_ = now;
         ROS_WARN_THROTTLE(2.0, "[%s]: Searching for target (yaw_rate=%.2f)...",
-                          name().c_str(), max_yaw_rate_);
+                          name().c_str(), search_yaw_rate_);
         return NodeStatus::RUNNING;
     }
     const double unseen_time = (now - last_valid_detection_time_).toSec();

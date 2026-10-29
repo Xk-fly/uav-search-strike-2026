@@ -5,6 +5,7 @@
 #
 # 启动内容：
 #   0.  roscore                   — ROS 核心
+#       record_flight_bag.sh      — 轻量 rosbag 自动录制到工作空间 Bag/
 #   1.  LLM (mission_once.py)     — 大模型加载（耗时，最先启动）    [独立 xterm]
 #   2.  detection_color.launch    — YOLO 目标检测 + HSV 颜色分类    [独立 xterm]
 #   3.  MAVROS                    — 飞控通信（当前已注释）
@@ -80,6 +81,29 @@ fi
 # ===================== MAVROS 参数 =====================
 MAVROS_FCU_URL="udp://:20101@"
 
+# Ctrl+C 清理（启动过程中同样生效）。先关闭bag，保证索引写完后再停ROS。
+cleanup() {
+    trap '' SIGINT SIGTERM
+    echo ""
+    echo -e "${RED}正在关闭所有进程...${NC}"
+    if [ -n "${BAG_PID:-}" ]; then
+        kill -INT "${BAG_PID}" 2>/dev/null
+        wait "${BAG_PID}" 2>/dev/null
+        echo -e "${GREEN}rosbag 录制已结束，文件位于 ${WS_DIR}/Bag${NC}"
+    fi
+    kill $ROSCORE_PID $LLM_PID $MAVROS_PID $SENSOR_PID $MAP_PID $CLOUD_PID $DET_PID $ARUCO_PID $EGO_PID $MISSION_PID $SETPOINT_MON_PID $SYS_MON_PID 2>/dev/null
+    pkill -f "roscore" 2>/dev/null
+    pkill -f "mavros" 2>/dev/null
+    pkill -f "cloud_transform" 2>/dev/null
+    pkill -f "det_color" 2>/dev/null
+    pkill -f "ego_planner" 2>/dev/null
+    pkill -f "bt_ros" 2>/dev/null
+    pkill -f "mission_once" 2>/dev/null
+    echo -e "${GREEN}所有进程已关闭。${NC}"
+    exit 0
+}
+trap cleanup SIGINT SIGTERM
+
 # =====================================================================
 # 0. 确保 roscore 已启动
 # =====================================================================
@@ -105,6 +129,13 @@ if ! pgrep -f rosmaster > /dev/null 2>&1; then
 else
     echo -e "${GREEN}      rosmaster 已在运行${NC}"
 fi
+
+# =====================================================================
+# 自动录制：在任务与传感器启动前订阅，包含本次启动内的所有测试。
+# =====================================================================
+bash "${WS_DIR}/record_flight_bag.sh" &
+BAG_PID=$!
+echo -e "${GREEN}[Bag] 自动录制 PID: ${BAG_PID}，保存目录: ${WS_DIR}/Bag${NC}"
 
 # =====================================================================
 # 1. 启动大模型 LLM（独立 xterm，模型加载耗时，最先启动）
@@ -286,23 +317,6 @@ echo -e "  rostopic echo /mission_result"
 echo ""
 echo -e "${CYAN}============================================${NC}"
 echo -e "${YELLOW}按 Ctrl+C 关闭所有后台进程${NC}"
-
-# Ctrl+C 清理
-cleanup() {
-    echo ""
-    echo -e "${RED}正在关闭所有进程...${NC}"
-    kill $ROSCORE_PID $LLM_PID $MAVROS_PID $SENSOR_PID $MAP_PID $CLOUD_PID $DET_PID $ARUCO_PID $EGO_PID $MISSION_PID $SETPOINT_MON_PID $SYS_MON_PID 2>/dev/null
-    pkill -f "roscore" 2>/dev/null
-    pkill -f "mavros" 2>/dev/null
-    pkill -f "cloud_transform" 2>/dev/null
-    pkill -f "det_color" 2>/dev/null
-    pkill -f "ego_planner" 2>/dev/null
-    pkill -f "bt_ros" 2>/dev/null
-    pkill -f "mission_once" 2>/dev/null
-    echo -e "${GREEN}所有进程已关闭。${NC}"
-    exit 0
-}
-trap cleanup SIGINT SIGTERM
 
 # 保持前台运行
 wait

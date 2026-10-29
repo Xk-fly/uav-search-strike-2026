@@ -1,6 +1,6 @@
 # 项目知识库入口（docs/README.md）
 
-> **2026-10-29 最新进展：** `codex/restore-official-flight` 增加三色共用丢球结束打击、实际停稳与 Ego 返航；搜索延长至120秒，弱检测放慢转向。官方接近/冲刺参数及0.30/0.15净空保留。需云端重新编译实飞，步骤见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
+> **2026-10-29 最新进展：** `codex/restore-official-flight` 在三色共用制动与Ego返航基础上，将未见球搜索恢复为0.3rad/s、保留120秒时限，并接入自动轻量录包到 `Bag/`。需云端重新编译实飞，步骤见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
 
 > 这套文档是 ChatGPT、Codex 和用户本人共同使用的长期项目记忆。GitHub Private 仓库中的版本是跨对话、跨电脑、跨服务器的主要知识来源。
 

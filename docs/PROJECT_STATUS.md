@@ -1,5 +1,13 @@
 # 项目状态与对话交接（PROJECT_STATUS.md）
 
+## 2026-10-29 搜索角速度恢复与自动轻量录包（待云端验证）
+
+- 用户实测反馈：到 A 区后0.5rad/s搜索偏快，转动时漂移穿模。本轮仅将未见球时搜索恢复为 `search_yaw_rate=0.3rad/s`，保留120秒打击时限；接近、冲刺、制动和返航逻辑未改。尚未确认三色制动与Ego返航实飞效果。
+- 根目录新增 `record_flight_bag.sh`，`sim_env_start.sh` 在 roscore 就绪后自动启动。默认保存到工作空间 `Bag/`（云端 `/home/ubuntu/catkin_ws/Bag`），LZ4压缩、约64MB分卷；记录真值/MAVROS里程计、飞控状态与指令、检测、规划、任务消息及ROS日志，不录图像或点云。分卷仅限制单文件大小，不限制总录制量。
+- 云端：`git pull --ff-only && ./build.sh`，成功后 `source devel/setup.bash`，按原前置流程启动 `./sim_env_start.sh`。检查搜索日志 `yaw_rate=0.30`、`rosnode info /flight_bag_recorder` 及 `ls -lh Bag/`；预期转向减慢，120秒时限保留，录制文件持续增长。
+- 结束时在启动终端按Ctrl+C，脚本先结束录包再关闭ROS；也可单独 `rosnode kill /flight_bag_recorder`，仿真继续运行。确认 `.bag.active` 变成 `.bag` 后下载本次所有分卷；重新启动前先正常停止旧脚本，避免旧录包被原有强制清理截断。独立录制：`bash ./record_flight_bag.sh`。
+- 本地仅验证脚本语法/模拟启动退出和参数回归，不能代替ROS编译与实飞；异常反馈搜索日志、漂移阶段、录包报错和本次bag。
+
 ## 2026-10-29 当前进展：三色共用制动、Ego 返航（待云端编译实飞）
 
 - 用户最新范围：不处理 ArUco 重复识别，不做下视复核/全局建图/换观察点；按经验将“曾看到目标后连续消失”作为命中判断，不增加多级结果分类。
