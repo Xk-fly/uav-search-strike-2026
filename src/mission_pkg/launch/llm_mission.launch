@@ -58,6 +58,7 @@
 
     <!-- 降落 -->
     <param name="land/return_pos" value="0.0;0.0;0.5" type="str"/>     <!-- 降落前返回位置 -->
+    <param name="land/return_safe_pos" value="0.0;0.0;1.0" type="str"/>
     <param name="land/return_yaw" value="0.0" type="double"/>         <!-- 降落前航向(rad) -->
 
     <!-- ============================================ -->
@@ -102,6 +103,7 @@
     <param name="visual_servo/forward_velocity"         value="1.0"   type="double"/>
     <param name="visual_servo/sprint_velocity"          value="1.5"   type="double"/>
     <param name="visual_servo/sprint_time"              value="1.2"   type="double"/>
+    <param name="visual_servo/search_timeout_ms"        value="120000" type="double"/>
 
     <!-- 运行任务节点（LLM 模式） -->
     <node pkg="mission_pkg" type="bt_ros" name="llm_mission_node" output="screen">

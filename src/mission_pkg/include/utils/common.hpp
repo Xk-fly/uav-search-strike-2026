@@ -71,6 +71,7 @@ struct PixelTarget
   double height{0.0};
   double timestamp{0.0};  // ROS时间戳
   bool is_detected{false}; // 是否检测到有效目标
+  double confidence{1.0}; // 跟踪目标置信度；手动像素目标默认可信
   
   PixelTarget() {}
   

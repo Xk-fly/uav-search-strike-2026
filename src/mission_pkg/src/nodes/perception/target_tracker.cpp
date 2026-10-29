@@ -62,6 +62,7 @@ NodeStatus TargetTracker::handleDetectedObject(const common_msgs::Obj& obj) {
     PixelTarget smoothed = getSmoothedPixel();
     smoothed.timestamp = ros::Time::now().toSec(); // 更新时间戳
     smoothed.is_detected = true;                   // 再次确认标志
+    smoothed.confidence = obj.score;
     setOutput("pixel_target", smoothed);
     
     ROS_INFO_THROTTLE(0.5, "[%s]: Tracking at pixel (%.1f, %.1f)", 

@@ -1,12 +1,26 @@
 # 项目状态与对话交接（PROJECT_STATUS.md）
 
-## 2026-10-28 当前进展：反穿框停稳交接补丁，待云端编译与实飞
+## 2026-10-29 当前进展：三色共用制动、Ego 返航（待云端编译实飞）
+
+- 用户最新范围：不处理 ArUco 重复识别，不做下视复核/全局建图/换观察点；按经验将“曾看到目标后连续消失”作为命中判断，不增加多级结果分类。
+- VisualServo：曾跟踪目标后消失0.25秒即结束，包括冲刺阶段；短暂消失时停止前进，朝最后目标方向转动。未见球时原地搜索0.5rad/s，置信度0.5至0.8的同色候选转向上限0.3rad/s；跟踪门槛0.8→0.5，任务打击时限50→120秒。搜索转向变化为本次用户明确要求，不据此宣称赛事已认可。
+- 共用制动复用 PlanningControl 的 `stop_only`：捕获固定位置，MAVROS速度模长≤0.12m/s连续0.5秒才完成，10秒未停稳则保持并失败。该门槛是完成判据，不是飞行速度设定。
+- 返航：停稳→GoTo原地面向Home→等待前视更新0.75秒→Ego到Home上方1m→Ego到降落准备点0.5m→原地恢复航向→Land。返航开启规划偏航和新目标匹配，避免沿用上一段轨迹；规划失败/超时不回退直线GoTo。LLM和五份静态XML同步。
+- 官方接近/冲刺速度、冲刺最长1.2秒、Ego速度/加速度、膨胀0.30与dist0=0.15、穿框和ArUco逻辑保留；未修改sensor_pkg或Ego地图代码。当前仍为局部地图，尚不承诺三色返航无碰撞。
+- 修改文件：`visual_servo.cpp/.h`、`planning_control.cpp/.h`、`goto.cpp`、`common.hpp`、`target_tracker.cpp`、`bt_ros.cpp`、`llm_mission.launch`、五份任务XML。本地已做替身ROS/BT的C++语法检查、实际控制函数的12个编译期行为用例、三色动态/静态XML及参数回归；不能代替ROS编译和实飞。
+- 云端：在本分支执行 `git pull --ff-only && ./build.sh`，成功后 `source devel/setup.bash`；任务停止后，按已有前置流程重新启动 `./sim_env_start.sh`。一次一条六步任务，依次红/蓝/紫。
+- 预期日志：`Target disappeared after tracking`或`Sprint completed`→`BRAKE: holding fixed position`→`BRAKE complete: actual stop verified`→`ReturnHome`导航完成→降落。搜索耗尽也先制动再返航。检查 `/objects`、`/mavros/local_position/odom`、`/planning/pos_cmd`、`/move_base_simple/goal`、`/mavros/setpoint_raw/local`；异常反馈颜色/阶段、Mission日志与同目录bag，重点记录停稳耗时、是否穿墙及是否卡在新目标等待。
+
+以下为历史记录。
+
+## 2026-10-28 当前进展：停稳补丁已云端编译，飞行测试被 LLM 指令提取问题阻断
 
 - 当前分支：`codex/restore-official-flight`，基于 `88f0098`。该版本单次实测赴 A 无碰撞，反穿框右偏约0.21m且轻微穿模，证据见 `DEBUG_LOG.md`。
+- 用户确认 `9e42a24` 云端编译成功；首次启动未起飞。`record.txt` 和 Mission 截图确认任务节点在线且收到消息，但消息只有 `python`/解释文字，生成空 Sequence 后报错，未进入 Takeoff。MAVROS connected=True、armed=False、AUTO.LOITER；停稳补丁的实际飞行效果尚未验证。下一步核对仓库外 `~/model/mission_once.py` 提取逻辑，并以纯六步命令复测任务入口。
 - 本轮修改：`planning_control.cpp/.h` 增加可选的接管前、到达后停稳门控；`bt_ros.cpp` 和四份 `full_competition*.xml` 仅在反穿框启用。原有航点、两段机体系 GoTo、官方速度与气球逻辑保留。
 - 停稳判据：MAVROS 三维速度模长≤0.12m/s，连续0.5s；0.12是完成判据，不是飞行限速。重复/过期/无效数据不能完成门控；允许最多0.1s的消息时钟领先，用接收时间计算持续时长。10s超时则保持位置并返回FAILURE。
 - Ego 膨胀0.30m、`dist0=0.15m` 保持；规划和点云继续使用既有真值坐标系。两路里程计坐标轴不同，不能直接替换整个 odom 话题。Ego 估速、全程 Ego 穿框、地图保留和实际跟踪误差保护仍待后续处理。
-- 本地已检查门控函数语法（消息/时间/锁使用替身）及静态/动态 BT XML、源码差异；**未完成 ROS 全量编译和仿真**。本轮涉及 C++，云端必须重新编译，并重启任务节点/完整仿真。
+- 本地已检查门控函数语法（消息/时间/锁使用替身）及静态/动态 BT XML、源码差异；用户随后确认云端编译成功，实际飞行验证仍待完成。后续涉及 C++ 的修改均须云端重新编译并重启任务节点。
 - 云端：确认处于本分支，依次执行 `git pull --ff-only`、`./build.sh`；编译成功后 `source devel/setup.bash`，按已跑通的 PX4/RflySim/MAVROS 前置流程启动 `./sim_env_start.sh`。
 - 验收：日志依次出现 `Holding before Ego takeover`、`Actual stop verified`、`Holding endpoint` 和导航完成；反穿前后确有持续悬停，无 `Stop gate timed out`。检查 `/mavros/local_position/odom`、`/planning/pos_cmd`、`/mavros/setpoint_raw/local`，回归首次穿框、ArUco、反穿框与赴 A。仍右偏/擦框、超时或卡住时，反馈阶段、任务日志及包含点云/膨胀地图的 bag；本补丁不代表碰撞已解决。
 - 用户文档偏好见 `AGENTS.md` 第 10 节。上次实测摘要见 [OFFICIAL_FLIGHT_ANALYSIS_20261028.md](OFFICIAL_FLIGHT_ANALYSIS_20261028.md)，恢复过程见 [OFFICIAL_FLIGHT_RESTORE_20261028.md](OFFICIAL_FLIGHT_RESTORE_20261028.md)。以下为历史记录。

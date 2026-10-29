@@ -330,6 +330,7 @@ std::string commandToXmlNode(const std::string& command) {
         std::string vs_fwd_vel  = std::to_string(getDbl("visual_servo/forward_velocity", 1.0));
         std::string vs_sprint_v = std::to_string(getDbl("visual_servo/sprint_velocity", 1.5));
         std::string vs_sprint_t = std::to_string(getDbl("visual_servo/sprint_time", 1.2));
+        std::string search_timeout = std::to_string((int)getDbl("visual_servo/search_timeout_ms", 120000));
         
         ROS_INFO("Hit balloon: color=%s -> zone=%s, approach=%s, goto=%s, yaw=%s, target=%s", 
                  color.c_str(), zone.c_str(), approach_pos.c_str(), goto_pos.c_str(), yaw.c_str(), balloon_name.c_str());
@@ -341,10 +342,10 @@ std::string commandToXmlNode(const std::string& command) {
             "      <GoTo goal=\"" + goto_pos + "\" yaw=\"" + yaw + "\"/>\n"
             "      <!-- 跟踪并撞击气球 -->\n"
             "      <ForceSuccess>\n"
-            "        <Timeout msec=\"50000\">\n"
+            "        <Timeout msec=\"" + search_timeout + "\">\n"
             "          <Parallel success_count=\"1\" failure_count=\"1\">\n"
             "            <TargetTracker object_name=\"" + balloon_name + "\" "
-            "confidence_threshold=\"0.8\" pixel_target=\"{balloon_pixel}\"/>\n"
+            "confidence_threshold=\"0.5\" pixel_target=\"{balloon_pixel}\"/>\n"
             "            <VisualServo pixel_target=\"{balloon_pixel}\" "
             "k_p_yaw_rate=\"" + vs_k_p_yaw + "\" k_d_yaw_rate=\"" + vs_k_d_yaw + "\" "
             "k_p_vz=\"" + vs_k_p_vz + "\" k_d_vz=\"" + vs_k_d_vz + "\" "
@@ -352,16 +353,26 @@ std::string commandToXmlNode(const std::string& command) {
             "forward_velocity=\"" + vs_fwd_vel + "\" sprint_velocity=\"" + vs_sprint_v + "\" sprint_time=\"" + vs_sprint_t + "\"/>\n"
             "          </Parallel>\n"
             "        </Timeout>\n"
-            "      </ForceSuccess>\n";
+            "      </ForceSuccess>\n"
+            "      <PlanningControl name=\"BalloonBrake\" stop_only=\"true\"/>\n";
     }
     
     // ---- land ----
     if (cmd == "land") {
         std::string ret_pos = getStr("land/return_pos", "0.0;0.0;0.5");
+        std::string safe_pos = getStr("land/return_safe_pos", "0.0;0.0;1.0");
         double ret_yaw = getDbl("land/return_yaw", 0.0);
         return
-            "      <!-- 返回起点 -->\n"
-            "      <GoTo goal=\"" + ret_pos + "\" yaw=\"" + std::to_string(ret_yaw) + "\"/>\n"
+            "      <!-- 制动停稳，原地面向返航方向，让前视深度看到返航障碍 -->\n"
+            "      <PlanningControl name=\"ReturnBrake\" stop_only=\"true\"/>\n"
+            "      <GoTo face_goal=\"" + safe_pos + "\"/>\n"
+            "      <Delay delay_msec=\"750\"><AlwaysSuccess/></Delay>\n"
+            "      <!-- 长距离返航及降落准备点都经过 Ego，不直接直线 GoTo -->\n"
+            "      <Timeout msec=\"90000\">\n"
+            "        <PlanningControl name=\"ReturnHome\" goal=\"" + safe_pos + "\" control_yaw=\"true\" wait_for_stop=\"true\" require_goal_match=\"true\"/>\n"
+            "      </Timeout>\n"
+            "      <PlanningControl goal=\"" + ret_pos + "\" wait_for_stop=\"true\" require_goal_match=\"true\"/>\n"
+            "      <GoTo yaw=\"" + std::to_string(ret_yaw) + "\"/>\n"
             "      <!-- 降落 -->\n"
             "      <Land/>\n";
     }

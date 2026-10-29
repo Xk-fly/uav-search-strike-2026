@@ -280,3 +280,8 @@ Catkin 编译
 - 速度模长取 MAVROS；只作停稳判断，不混用其位置或速度向量。bag 中两路位置轴旋转约90°；MAVROS 消息时间戳还可能领先接收时间约32ms，因此使用接收时间计时并检查时间戳有效性/重复/陈旧。
 - 范围：仅修改 PlanningControl、LLM 反穿节点和四份完整任务 XML；官方速度、0.30/0.15净空参数、航点/两段 GoTo、气球视觉伺服/冲刺不变。自动审批拒绝了扩大到共享 Ego 估速与整段路线重写的补丁，理由为未实测的碰撞和任务中断风险；本轮收窄到停稳交接。
 - 验证：门控函数通过 Clang 语法检查（ROS 时间/消息/锁替身），BT XML 及基线差异检查通过；Windows 未做 ROS 完整编译或实飞，运行边界场景也未完成本地执行。云端须重新编译并回归，命令与反馈要求见 PROJECT_STATUS。
+
+## 2026-10-28｜编译后未起飞：收到错误的 LLM 指令片段
+
+- 用户确认编译成功；`record.txt` 与 Mission 截图显示 `/llm_mission_node` 在线、订阅已连接，实际收到 `python`、解释文字等4行，全部被当作未知命令跳过。空 Sequence 创建失败：`The node <Sequence> must have 1 or more children`，尚未进入起飞节点。
+- MAVROS connected=True、armed=False、AUTO.LOITER。此次不动的直接原因已定位到任务输入内容；不能据此评价停稳补丁飞行效果。优先读取仓库外 `~/model/mission_once.py` 的代码块提取逻辑；可用原六步纯命令单次验证下游任务执行，暂不改飞行参数。

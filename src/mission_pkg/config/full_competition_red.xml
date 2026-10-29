@@ -41,12 +41,12 @@
       <!-- 12. 跟踪并撞击A区气球 -->
       <!-- 超时后 Timeout 返回 FAILURE，ForceSuccess 将其转为 SUCCESS -->
       <ForceSuccess>
-        <Timeout msec="50000">
+        <Timeout msec="120000">
           <Parallel success_count="1" failure_count="1">
             <!-- 持续跟踪：实时计算气球像素坐标 -->
             <TargetTracker 
                 object_name="red_balloon"
-                confidence_threshold="0.8"
+                confidence_threshold="0.5"
                 pixel_target="{balloon_pixel}" />
             
             <!-- 视觉伺服：VX+VZ+yaw_rate PD控制 -->
@@ -64,8 +64,15 @@
           </Parallel>
         </Timeout>
       </ForceSuccess>
-      <!-- 13. 返回起点 -->
-      <GoTo goal="0.0;0.0;0.5" yaw="0.0"/>
+      <!-- 三色共用：实际停稳后再转向，经 Ego 返航 -->
+      <PlanningControl name="BalloonBrake" stop_only="true"/>
+      <GoTo face_goal="0.0;0.0;1.0"/>
+      <Delay delay_msec="750"><AlwaysSuccess/></Delay>
+      <Timeout msec="90000">
+        <PlanningControl name="ReturnHome" goal="0.0;0.0;1.0" control_yaw="true" wait_for_stop="true" require_goal_match="true"/>
+      </Timeout>
+      <PlanningControl goal="0.0;0.0;0.5" wait_for_stop="true" require_goal_match="true"/>
+      <GoTo yaw="0.0"/>
       <!-- 14. 降落 -->
       <Land use_speed="0" />
     </Sequence>

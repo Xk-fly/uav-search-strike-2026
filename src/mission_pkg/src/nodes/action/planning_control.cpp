@@ -36,6 +36,8 @@ PortsList PlanningControl::providedPorts() {
              InputPort<double>("tolerance", "到达容差"),
              InputPort<bool>("control_yaw", false, "是否控制偏航角"),
              InputPort<bool>("wait_before_start", false, "发规划目标前等待实际停稳"),
+             InputPort<bool>("stop_only", false, "仅制动并等待停稳，不发送规划目标"),
+             InputPort<bool>("require_goal_match", false, "仅执行当前目标对应的规划指令"),
              InputPort<bool>("wait_for_stop", false, "到达后等待实际停稳"),
              InputPort<double>("stop_speed_tolerance", 0.12, "停稳判据(m/s)，不是飞行限速"),
              InputPort<double>("stop_settle_time", 0.5, "连续停稳时间(s)"),
@@ -158,6 +160,9 @@ NodeStatus PlanningControl::onStart() {
     auto yaw_res = getInput<bool>("control_yaw");
     control_yaw = yaw_res.value();
     wait_before_start_ = getInput<bool>("wait_before_start").value();
+    stop_only_ = getInput<bool>("stop_only").value();
+    require_goal_match_ = getInput<bool>("require_goal_match").value();
+    if (stop_only_) wait_before_start_ = true;
     wait_for_stop_ = getInput<bool>("wait_for_stop").value();
     const double speed_tolerance = getInput<double>("stop_speed_tolerance").value();
     stop_settle_time_ = getInput<double>("stop_settle_time").value();
@@ -185,7 +190,8 @@ NodeStatus PlanningControl::onStart() {
     if (wait_before_start_) {
         beginSettling();
         publishPosition(entry_hold_pos_, initial_yaw_);
-        ROS_INFO("[%s]: Holding before Ego takeover; waiting for actual stop.", name().c_str());
+        ROS_INFO("[%s]: %s; waiting for actual stop.", name().c_str(),
+                 stop_only_ ? "BRAKE: holding fixed position" : "Holding before Ego takeover");
         return NodeStatus::RUNNING;
     }
 
@@ -210,6 +216,10 @@ NodeStatus PlanningControl::onRunning() {
         if (settleTimedOut()) return NodeStatus::FAILURE;
         if (!isStoppedAndSettled()) return NodeStatus::RUNNING;
         wait_before_start_ = false;
+        if (stop_only_) {
+            ROS_INFO("[%s]: BRAKE complete: actual stop verified.", name().c_str());
+            return NodeStatus::SUCCESS;
+        }
         ROS_INFO("[%s]: Actual stop verified; enabling Ego navigation.", name().c_str());
     }
     // 如果目标还未初始化，尝试获取
@@ -271,6 +281,15 @@ NodeStatus PlanningControl::onRunning() {
         std::lock_guard<std::mutex> lock(planner_mutex_);
         if (!has_planner_cmd) return NodeStatus::RUNNING;
         planner_cmd = last_planner_cmd;
+    }
+    // traj_server 会继续发布上一段轨迹；返航须等待新目标的轨迹再接管。
+    if (require_goal_match_ &&
+        (std::abs(planner_cmd.goal_pos.x - target_pos_.x) > 0.05 ||
+         std::abs(planner_cmd.goal_pos.y - target_pos_.y) > 0.05 ||
+         std::abs(planner_cmd.goal_pos.z - target_pos_.z) > 0.05)) {
+        publishPosition(entry_hold_pos_, initial_yaw_);
+        ROS_INFO_THROTTLE(2.0, "[%s]: Waiting for trajectory for the current goal.", name().c_str());
+        return NodeStatus::RUNNING;
     }
 
     // Ego-planner 输出经过 publishPosition 做 ENU→NED 转换

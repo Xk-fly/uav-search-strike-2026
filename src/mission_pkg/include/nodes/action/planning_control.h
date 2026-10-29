@@ -36,6 +36,8 @@ private:
 
     // Optional gates; existing PlanningControl calls keep their original behavior.
     bool wait_before_start_{false};
+    bool stop_only_{false};
+    bool require_goal_match_{false};
     bool wait_for_stop_{false};
     bool arrival_hold_active_{false};
     geometry_msgs::Point entry_hold_pos_;

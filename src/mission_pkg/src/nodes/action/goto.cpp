@@ -14,6 +14,7 @@ GoTo::GoTo(const std::string& name, const NodeConfig& config)
 PortsList GoTo::providedPorts() {
     return { InputPort<Position3D>("goal", "目标位置 (x, y, z), 为空则保持当前位置"),
              InputPort<double>("yaw", "目标绝对航向 (rad), 为空则保持当前航向"),
+             InputPort<Position3D>("face_goal", "原地转向此世界坐标目标；不改变位置"),
              InputPort<int>("frame", 0, "坐标系: 0=世界系(默认), 1=机体系"),
              InputPort<double>("tolerance", "到达容差"),
              InputPort<double>("yaw_tolerance", "偏航到达容差(rad)"),
@@ -57,6 +58,13 @@ NodeStatus GoTo::onStart() {
     } else {
         target_yaw = current_yaw;
         check_yaw = false;
+    }
+    auto face_res = getInput<Position3D>("face_goal");
+    if (face_res) {
+        const auto& face = face_res.value();
+        target_pos = current_pos;
+        target_yaw = std::atan2(face.y - current_pos.y, face.x - current_pos.x);
+        check_yaw = true;
     }
 
     auto tol_res = getInput<double>("tolerance");

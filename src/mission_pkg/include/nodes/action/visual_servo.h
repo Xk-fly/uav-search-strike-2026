@@ -31,7 +31,6 @@ private:
     PixelTarget last_target_;
     ros::Time last_valid_detection_time_;
     bool has_ever_received_data_;
-    double max_area_ratio_;
     ros::Time sprint_start_time_;
     int align_stable_frames_;
     
@@ -61,6 +60,7 @@ private:
     double approach_area_threshold_;// 触发冲刺的面积占比阈值
     double center_tolerance_;       // 对齐判定区域比例
     double search_yaw_rate_;        // 搜索模式旋转速度 (rad/s)
+    double hit_lost_time_;          // 曾看到目标后，连续消失多久即结束打击
     
     // 微分计算用
     double prev_err_x_, prev_err_y_;
