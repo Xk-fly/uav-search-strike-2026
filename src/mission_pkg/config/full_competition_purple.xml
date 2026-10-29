@@ -78,7 +78,7 @@
       <GoTo face_goal="0.0;0.0;1.0"/>
       <Delay delay_msec="750"><AlwaysSuccess/></Delay>
       <Timeout msec="90000">
-        <PlanningControl name="ReturnHome" goal="0.0;0.0;1.0" control_yaw="true" wait_for_stop="true" require_goal_match="true"/>
+        <PlanningControl name="ReturnHome" goal="0.0;0.0;1.0" control_yaw="false" wait_for_stop="true" require_goal_match="true"/>
       </Timeout>
       <PlanningControl goal="0.0;0.0;0.5" wait_for_stop="true" require_goal_match="true"/>
       <GoTo yaw="0.0"/>

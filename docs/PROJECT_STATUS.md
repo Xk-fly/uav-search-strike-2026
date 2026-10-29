@@ -1,5 +1,18 @@
 # 项目状态与对话交接（PROJECT_STATUS.md）
 
+## 2026-10-29 冲刺丢球判据与返航两处修复（待云端编译实飞）
+
+- 最新bag证据见 `DEBUG_LOG.md`：固定位置搜索正常；远距丢球误触发返航，ReturnHome接管规划yaw后猛转，Ego急停又因缺少目标标识被拒收。本轮只修这三处。
+- 按用户最终要求：只有 `SPRINTING` 连续丢球0.25秒才按完成转入制动；ALIGN/APPROACHING丢球，无论之前多近，都捕获当前位置继续0.3rad/s搜索。重新见球初始化PD误差；当前检测无效时，禁止用旧面积触发冲刺。原1.2秒冲刺上限和50秒任务时限保留，到时结束尝试并制动，不据此宣称命中。
+- 返航 `control_yaw=false`：保留原地面向Home后的航向，由Ego规划位置；动态LLM和五份静态任务同步。急停Bspline补齐当前全局目标 `goal_pt`，通过已有目标匹配后执行急停位置，不再因此回拉返航起点。
+- 改动文件：`visual_servo.cpp/.h`、`bt_ros.cpp`、五份任务XML、`ego_replan_fsm.cpp`。官方速度、Ego净空、穿框、ArUco、共用停稳制动与自动录包保留。
+- 本地验证：实际控制函数配ROS/BT/Eigen替身的C++语法及20个编译期行为断言、静态/动态XML检查通过；恢复旧逻辑后回归断言如期失败。不能代替ROS完整编译及飞行验证。
+- 版本：修改前故障复现点 `checkpoint/20261029-before-sprint-return-fix` → `11ebac2`；本轮测试版本 `test/20261029-sprint-return-v1`。前者含已确认故障，不是稳定飞行推荐。需要复现时，可在干净工作区新建分支：`git switch -c codex/reproduce-20261029 checkpoint/20261029-before-sprint-return-fix`，随后重编译；无需改写历史。
+- 云端：停止旧任务后，在 `codex/restore-official-flight` 执行 `git pull --ff-only && ./build.sh`，成功后 `source devel/setup.bash`，按已跑通的前置流程重启 `./sim_env_start.sh`。先红球，再蓝/紫。
+- 验收：未冲刺丢球应见 `Target lost before SPRINT` 并继续搜索；冲刺丢球应见 `Target lost during SPRINT` → `BRAKE complete` → ReturnHome（`control_yaw=0`）→降落。检查 `/planning/pos_cmd` 的急停goal_pos仍为返航目标、`/mavros/setpoint_raw/local` 不回跳旧起点，实际 `/rflysim/uav1/local/odom` 无猛转。异常反馈颜色/阶段、Mission日志、`git rev-parse --short HEAD` 及本次 `Bag/flight_*.bag`。
+
+以下为历史记录，以本节当前判据为准。
+
 ## 2026-10-29 搜索回退与原地保持修正（待云端验证）
 
 - 用户反馈最新运行到A区后突然自旋、持续转动。本轮提供的 `official_flight_20261028_132253.bag` 实为旧版：搜索0.30rad/s、检测门槛0.8，撞击后直接GoTo返航，没有新版制动/Ego返航日志，不能据此确认最新失控原因。

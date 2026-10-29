@@ -1,6 +1,6 @@
 # 项目知识库入口（docs/README.md）
 
-> **2026-10-29 最新进展：** `codex/restore-official-flight` 撤回新增搜索反馈，恢复检测门槛0.8/50秒时限；以固定位置、原0.3rad/s缓转搜索，并修复首见球PD跳变。共用制动、Ego返航和自动录包保留。待云端重新编译实飞，见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
+> **2026-10-29 最新进展：** 新bag确认未冲刺丢球误判完成、返航航向混用和急停目标字段缺失。`codex/restore-official-flight` 已改为仅冲刺丢球完成、返航保持面向Home后的航向、急停保留当前任务目标；本地替身检查通过，待云端重新编译实飞。版本标签及步骤见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
 
 > 这套文档是 ChatGPT、Codex 和用户本人共同使用的长期项目记忆。GitHub Private 仓库中的版本是跨对话、跨电脑、跨服务器的主要知识来源。
 

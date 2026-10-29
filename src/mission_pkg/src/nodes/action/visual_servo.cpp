@@ -51,7 +51,7 @@ PortsList VisualServo::providedPorts() {
              InputPort<double>("approach_area_threshold", 0.08, "触发冲刺的面积占比"),
              InputPort<double>("center_tolerance", 0.15, "对齐判定区域比例"),
              InputPort<double>("search_yaw_rate", 0.3, "固定位置搜索的转向速度(rad/s)"),
-             InputPort<double>("hit_lost_time", 0.25, "曾看到目标后连续消失即结束打击(s)") };
+             InputPort<double>("hit_lost_time", 0.25, "连续丢球时间；仅冲刺中丢球视作完成(s)") };
 }
 
 NodeStatus VisualServo::onStart() {
@@ -100,14 +100,32 @@ NodeStatus VisualServo::onStart() {
 }
 
 NodeStatus VisualServo::onRunning() {
-    updateTargetData();
+    const bool target_detected = updateTargetData();
     
     // 计算时间步长
     ros::Time now = ros::Time::now();
     double dt = (now - prev_time_).toSec();
     if (dt < 0.001) dt = 0.001;
+
+    if (has_ever_received_data_ && isTargetLost()) {
+        const double unseen_time = (now - last_valid_detection_time_).toSec();
+        if (current_state_ == SPRINTING) {
+            sendHoverCommand();
+            ROS_INFO("[%s]: Target lost during SPRINT (%.2fs); BRAKE next.",
+                     name().c_str(), unseen_time);
+            return NodeStatus::SUCCESS;
+        }
+        // 对齐/接近时丢球，无论目标曾有多近，都只在当前位置重新搜索。
+        has_ever_received_data_ = false;
+        current_state_ = APPROACHING;
+        align_stable_frames_ = 0;
+        search_pos_ = fcu_odom_ptr->pose.pose.position;
+        search_yaw_ = PoseUtils::getYawFromQuat(fcu_odom_ptr->pose.pose.orientation);
+        ROS_WARN("[%s]: Target lost before SPRINT (%.2fs); holding position and searching.",
+                 name().c_str(), unseen_time);
+    }
     
-    // 搜索保持进入伺服时的位置，只缓慢改变航向；零机体速度不能锁住真值位置。
+    // 搜索保持进入搜索时的位置，只缓慢改变航向；零机体速度不能锁住真值位置。
     if (!has_ever_received_data_) {
         search_yaw_ += search_yaw_rate_ * dt;
         while (search_yaw_ > M_PI) search_yaw_ -= 2 * M_PI;
@@ -117,13 +135,6 @@ NodeStatus VisualServo::onRunning() {
         ROS_WARN_THROTTLE(2.0, "[%s]: Fixed-position search (yaw_rate=%.2f)...",
                           name().c_str(), search_yaw_rate_);
         return NodeStatus::RUNNING;
-    }
-    const double unseen_time = (now - last_valid_detection_time_).toSec();
-    if (isTargetLost()) {
-        sendHoverCommand();
-        ROS_INFO("[%s]: Target disappeared after tracking (%.2fs); treating as hit, BRAKE next.",
-                 name().c_str(), unseen_time);
-        return NodeStatus::SUCCESS;
     }
     
     // 计算基本量
@@ -179,8 +190,8 @@ NodeStatus VisualServo::onRunning() {
                 break;
             }
             
-            // 面积达阈值 → 触发冲刺
-            if (current_ratio >= approach_area_threshold_) {
+            // 当前仍见球且面积达阈值才冲刺，不能用丢球前的旧面积触发。
+            if (target_detected && current_ratio >= approach_area_threshold_) {
                 current_state_ = SPRINTING;
                 sprint_start_time_ = ros::Time::now();
                 ROS_INFO("[%s]: Area %.1f%% >= %.1f%% -> SPRINT! (sprint_vel=%.2f, time=%.1fs)", 
@@ -198,10 +209,10 @@ NodeStatus VisualServo::onRunning() {
             // 阶段3：冲刺 — 全速前进，保持 yaw_rate 和 VZ 修正
             double sprint_dt = (ros::Time::now() - sprint_start_time_).toSec();
             
-            // 超时 → 完成
+            // 原冲刺时长上限：到时结束本次尝试并制动，不据此宣称命中。
             if (sprint_dt >= sprint_time_) {
                 sendHoverCommand();
-                ROS_INFO("[%s]: Sprint completed (%.1fs); BRAKE next.", name().c_str(), sprint_dt);
+                ROS_INFO("[%s]: Sprint time limit reached (%.1fs); BRAKE next.", name().c_str(), sprint_dt);
                 return NodeStatus::SUCCESS;
             }
             
@@ -268,9 +279,9 @@ double VisualServo::computeVz(double err_y, double dt) {
 // 辅助函数
 // =====================================================================
 
-void VisualServo::updateTargetData() {
+bool VisualServo::updateTargetData() {
     auto target_res = getInput<PixelTarget>("pixel_target");
-    if (!target_res) return;
+    if (!target_res) return false;
 
     PixelTarget current_target = target_res.value();
     if (current_target.is_detected) {
@@ -284,7 +295,9 @@ void VisualServo::updateTargetData() {
         last_target_ = current_target;
         last_valid_detection_time_ = ros::Time::now(); 
         has_ever_received_data_ = true;
+        return true;
     }
+    return false;
 }
 
 bool VisualServo::isTargetLost() {

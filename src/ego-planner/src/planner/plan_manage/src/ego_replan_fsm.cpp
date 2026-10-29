@@ -491,6 +491,10 @@ namespace ego_planner
     bspline.order = 3;
     bspline.start_time = info->start_time_;
     bspline.traj_id = info->traj_id_;
+    // 急停仍属于当前任务，保留目标标识，让任务层接收此原地保持轨迹。
+    bspline.goal_pt.x = end_pt_(0);
+    bspline.goal_pt.y = end_pt_(1);
+    bspline.goal_pt.z = end_pt_(2);
 
     Eigen::MatrixXd pos_pts = info->position_traj_.getControlPoint();
     bspline.pos_pts.reserve(pos_pts.cols());

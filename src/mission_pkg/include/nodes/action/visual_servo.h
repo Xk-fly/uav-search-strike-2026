@@ -62,7 +62,7 @@ private:
     double approach_area_threshold_;// 触发冲刺的面积占比阈值
     double center_tolerance_;       // 对齐判定区域比例
     double search_yaw_rate_;        // 搜索模式旋转速度 (rad/s)
-    double hit_lost_time_;          // 曾看到目标后，连续消失多久即结束打击
+    double hit_lost_time_;          // 连续丢球时长；只有冲刺阶段据此结束打击
     
     // 微分计算用
     double prev_err_x_, prev_err_y_;
@@ -72,7 +72,7 @@ private:
     static constexpr int ALIGN_STABLE_FRAMES_REQUIRED = 5;
 
     // 辅助函数
-    void updateTargetData();
+    bool updateTargetData();
     bool isTargetLost();
     bool isCentered() const;
     
